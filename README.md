@@ -87,6 +87,10 @@ Grid guru × tanggal, kode `TOT / TL / H / S / I / A / L`, kolom total
 TOT/TL/H/S/I/A dan %Hadir (kolom total menempel di kanan). Klik sel → foto absen,
 jam, jarak, akurasi, dan ubah status + catatan. Ada **Export CSV** dan **Cetak** A4 landscape.
 
+Di HP (mayoritas pengguna) rekap otomatis berubah jadi **kartu per guru** berisi
+kalender mini: angka tanggal berwarna sesuai kode, ketuk tanggal untuk melihat foto
+atau mengubah status. Tabel penuh tetap dipakai di desktop dan saat mencetak.
+
 ## Batasan
 
 - GPS bisa dipalsukan aplikasi fake-GPS; foto + jam + jarak disimpan sebagai bukti.
