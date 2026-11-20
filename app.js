@@ -14,6 +14,7 @@ let pengaturan = null;
 let posisi = null;
 let stream = null;
 let absenHariIni = null;
+let modeDemo = new URLSearchParams(location.search).get('demo') === '1';
 
 const rekap = {
   bulan: '',
@@ -69,10 +70,64 @@ function tampilkan(view) {
   $('topbar').hidden = view === 'login';
 }
 
+// ── mode demo: pratinjau rekap tanpa database (index.html?demo=1) ───────────
+function mulaiDemo() {
+  profil = { id: 'demo', nama: 'Admin SMP ABBS (demo)', role: 'admin', sekolah_id: 'demo', status: 'aktif' };
+  pengaturan = { id: true, lat: -7.539134, lon: 110.805751, radius_m: 50, batas_tot: '06:50:00', hari_kerja: [1, 2, 3, 4, 5, 6] };
+
+  $('siapa').textContent = 'Mode demo';
+  $('demo-banner').hidden = false;
+
+  const bulan = bulanIniWIB();
+  rekap.bulan = bulan;
+  rekap.hariIni = tanggalWIB();
+  rekap.hariKerja = new Set(pengaturan.hari_kerja);
+  rekap.libur = new Set([`${bulan}-05`]);
+  rekap.guru = ['Adila Rahmah, M.Pd', 'Afriyan Moneter Pratama', 'Ahmad Bayu Abdullah, M.Pd',
+    'Amien Nur Wicaksono, S.Ag', 'Anni Wijayanti, S.Pd', 'Arif Hidayat, M.Pd',
+    'Asnia Novitasari AM, M.E', 'Binti Qoeroti, S.Pd., M.Si',
+    'Charlieta Nova Putri Fedito, S.Kom', 'Danang Dwi Pambudi, S.Pd., Gr.',
+    'Farida Nur Hidayati, S.Pd', 'Yona Puspa Ningtias, S.Pd., Gr.']
+    .map((nama, i) => ({ id: 'd' + i, nama }));
+
+  const peta = new Map();
+  rekap.guru.forEach((g, gi) => {
+    for (let d = 1; d <= 31; d++) {
+      const tgl = `${bulan}-${String(d).padStart(2, '0')}`;
+      if (tgl > rekap.hariIni) break;
+      if (!rekap.hariKerja.has(isoDow(tgl)) || rekap.libur.has(tgl)) continue;
+      if ((d + gi) % 11 === 0) continue;                      // dibiarkan alpa
+      if ((d + gi) % 7 === 0) {
+        peta.set(g.id + '|' + tgl, {
+          status: d % 2 ? 'izin' : 'sakit', jam: '00:00:00', tepat_waktu: false,
+          jarak_m: null, akurasi_m: null, foto_path: null,
+          catatan: d % 2 ? 'acara keluarga' : 'surat dokter', dicatat_oleh: 'demo'
+        });
+        continue;
+      }
+      const telat = (d + gi) % 5 === 0;
+      peta.set(g.id + '|' + tgl, {
+        status: 'hadir', jam: telat ? '07:12:00' : `06:${String(30 + (d * 3) % 20).padStart(2, '0')}:00`,
+        tepat_waktu: !telat, jarak_m: 18 + (d * gi) % 40, akurasi_m: 8 + d % 12,
+        foto_path: null, catatan: null, dicatat_oleh: null
+      });
+    }
+  });
+  rekap.peta = peta;
+
+  $('rekap-bulan').value = bulan;
+  $('rekap-bulan-label').textContent = bulanPanjang(bulan) + ' · Mode demo';
+  isiFormPengaturan();
+  gambarUlangTabel();
+  gambarLibur([{ tanggal: `${bulan}-05`, keterangan: 'Libur contoh' }]);
+  tampilkan('rekap');
+}
+
 // ── start ───────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   if (location.search.includes('uji')) ujiLogika();
   pasangEvent();
+  if (modeDemo) { mulaiDemo(); return; }
   if (!APP_CONFIG.supabaseUrl || !APP_CONFIG.supabaseKey) {
     tampilkan('login');
     $('login-salah').hidden = false;
@@ -359,6 +414,7 @@ async function muatRiwayat() {
 
 // ── rekap (admin) ───────────────────────────────────────────────────────────
 async function muatRekap() {
+  if (modeDemo) return;
   if (!profil || profil.role !== 'admin') return;
   const bulan = $('rekap-bulan').value || bulanIniWIB();
   $('rekap-bulan').value = bulan;
@@ -539,6 +595,7 @@ function tutupModal() {
 }
 
 async function setStatus(aksi) {
+  if (modeDemo) return toast('Mode demo: perubahan tidak disimpan.');
   if (!modalAktif) return;
   const catatan = $('modal-catatan')?.value || null;
   const { data, error } = await db.rpc('absensi_set_status', {
@@ -574,6 +631,7 @@ function isiFormPengaturan() {
 }
 
 async function simpanPengaturan() {
+  if (modeDemo) return toast('Mode demo: pengaturan tidak disimpan.');
   if (!profil || profil.role !== 'admin') return;
   const hari = [...$('set-hari').querySelectorAll('input:checked')].map(c => Number(c.value));
   if (!hari.length) return toast('Pilih minimal satu hari kerja.');
@@ -623,6 +681,7 @@ function gambarLibur(daftar) {
 
   $('libur-daftar').querySelectorAll('[data-hapus]').forEach(b => {
     b.addEventListener('click', async () => {
+      if (modeDemo) return toast('Mode demo: hari libur tidak disimpan.');
       const { error } = await db.from('absensi_libur').delete().eq('tanggal', b.dataset.hapus);
       if (error) return toast('Gagal menghapus libur: ' + error.message);
       await muatRekap();
@@ -631,6 +690,7 @@ function gambarLibur(daftar) {
 }
 
 async function tambahLibur() {
+  if (modeDemo) return toast('Mode demo: hari libur tidak disimpan.');
   const tanggal = $('libur-tanggal').value;
   const keterangan = $('libur-ket').value.trim();
   if (!tanggal) return toast('Pilih tanggal libur.');
