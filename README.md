@@ -1,55 +1,60 @@
 # Absensi Guru SMP ABBS Surakarta
 
-Aplikasi absensi guru: login pakai akun LMS, absen foto + GPS dalam radius sekolah,
+Absensi guru: **login pakai akun LMS**, absen foto + GPS dalam radius sekolah,
 rekap bulanan untuk admin dengan aturan **TOT** (tepat waktu ≤ batas jam).
 
-Tanpa build step — HTML + CSS + JS biasa, database Supabase project LMS, host statis (Vercel/GitHub Pages).
+Tanpa build step — HTML + CSS + JS biasa, host statis (GitHub Pages).
+
+## Link
+
+- Aplikasi: <https://smpabbs.github.io/absensi-guru-abbs/>
+- Demo rekap (data contoh, tanpa login): <https://smpabbs.github.io/absensi-guru-abbs/?demo=1>
+
+## Arsitektur
+
+```
+HP guru ──login──▶ Supabase LMS (drlsnhnqxkcgcuskswwx)
+   │                 └─ auth: username → username@examfilq.dev → signIn
+   └──data──▶ Edge Function "absen" (project abbs-chat-belajar)
+                 ├─ verifikasi token LMS (GET /auth/v1/user)
+                 ├─ validasi radius, jam, TOT, absen ganda
+                 ├─ tabel absen_presensi / absen_pengaturan / absen_libur
+                 └─ foto → bucket privat absensi-foto
+```
+
+Kenapa dua project: **data presensi dipisah** dari database LMS (tidak mencampuri
+ujian/rapor), sementara akun tetap akun LMS asli. Karena token LMS tidak berlaku
+di project lain, semua baca/tulis lewat satu Edge Function yang memverifikasi token
+LMS lebih dulu. Kata sandi tidak pernah disalin dan tidak bisa dibaca (hash bcrypt).
 
 ## Isi folder
 
 | File | Fungsi |
 |---|---|
 | `index.html` | 3 tampilan: login, absen, rekap admin |
-| `app.js` | kamera, GPS, panggil fungsi database, tabel rekap |
+| `app.js` | kamera, GPS, panggil Edge Function, tabel rekap |
 | `styles.css` | tampilan + gaya cetak A4 landscape |
-| `config.js` | URL Supabase + publishable key (aman untuk browser) |
-| `db/20261120_absensi_guru.sql` | tabel, RLS, fungsi validasi, bucket foto |
+| `config.js` | URL/key publik (LMS untuk login, project presensi untuk data) |
+| `db/chat-project.sql` | tabel presensi + bucket foto (project abbs-chat-belajar) |
+| `supabase/functions/absen/index.ts` | Edge Function: verifikasi token LMS + simpan presensi |
+| `tests/` | pratinjau UI dengan data palsu & uji sesi nyata |
 | `BLUEPRINT.md` | latar belakang, data sekolah, keputusan desain |
 
-## Pratinjau
+## Pasang / perbarui
 
-- **Demo (data contoh, tanpa login):** https://smpabbs.github.io/absensi-guru-abbs/?demo=1
-- **Aplikasi:** https://smpabbs.github.io/absensi-guru-abbs/
-
-Mode demo mengisi rekap bulanan dengan 12 guru contoh, tanpa menyentuh database.
-Tombol simpan & ubah status otomatis ditolak di mode ini.
-
-## Hosting
-
-GitHub Pages dari branch `main` (root folder). Setiap `git push` ke `main` otomatis
-memperbarui situs dalam ±1 menit. Tidak ada build step.
-
-Catatan: repo harus publik supaya Pages aktif (plan akun belum mendukung Pages untuk repo privat).
-Isi repo hanya kode + publishable key Supabase, yang memang untuk browser.
-
-## Pasang (sekali)
-
-1. **Jalankan SQL.** Buka Supabase → project LMS (`drlsnhnqxkcgcuskswwx`) → SQL Editor →
-   tempel seluruh isi `db/20261120_absensi_guru.sql` → Run.
-   Cek hasilnya:
-   ```sql
-   select * from absensi_pengaturan;          -- harus ada 1 baris, radius 50
-   select absensi_login_email('admin.abbs');  -- harus mengembalikan email admin
+1. **Tabel** (sekali): jalankan `db/chat-project.sql` di SQL Editor project
+   `abbs-chat-belajar` (sudah dijalankan; aman diulang).
+2. **Edge Function**:
    ```
-2. **Isi `config.js`** kalau project Supabase berbeda (sekarang sudah terisi).
-3. **Buka aplikasi.** Untuk uji lokal:
-   ```powershell
-   cd X:\absensi-guru-abbs
-   python -m http.server 8080
+   npx supabase functions deploy absen --project-ref lthyqvxpiykqfaqrumcx --no-verify-jwt --yes
+   npx supabase secrets set LMS_ANON_KEY=... LMS_URL=https://drlsnhnqxkcgcuskswwx.supabase.co \
+     --project-ref lthyqvxpiykqfaqrumcx
    ```
-   Lalu buka <http://localhost:8080>. Jangan buka lewat `file://` — kamera & GPS butuh origin aman.
-4. **Deploy**: folder ini statis, bisa langsung `vercel --prod` atau upload ke hosting sekolah.
-   Domain yang disarankan: `absen.smpabbs.alabidin.sch.id`.
+   `LMS_ANON_KEY` = publishable key LMS (ada fallback di dalam kode, jadi jarang perlu diubah).
+3. **Frontend**: ubah `config.js` bila project berubah, lalu `git push` (Pages
+   memperbarui sendiri ±1 menit).
+4. **Uji lokal**: `python -m http.server 8080` lalu buka <http://localhost:8080>.
+   Jangan lewat `file://` — kamera & GPS butuh origin aman.
 
 ## Login
 
@@ -58,58 +63,40 @@ Isi repo hanya kode + publishable key Supabase, yang memang untuk browser.
 | Guru | username LMS (mis. `tri.wijayanti`) + kata sandi LMS | halaman absen + riwayat 14 hari |
 | Admin | `admin.abbs` + kata sandi LMS | rekap bulanan + pengaturan |
 
-Login memakai **akun LMS yang sama**, bukan akun baru:
-
-1. username diubah jadi email akun LMS (`username@examfilq.dev`) — memakai RPC LMS
-   `get_email_by_username` kalau tersedia, atau pola domain di `app.js` (`DOMAIN_LMS`);
-2. Supabase Auth LMS memverifikasi kata sandi.
-
-Kata sandi tidak pernah disalin ke aplikasi ini dan tidak bisa dibaca dari database
-(hash bcrypt satu arah). Jadi tidak ada data login yang perlu diimpor — cukup daftar guru
-yang memang sudah ada di LMS (48 guru SMP ABBS, semua punya username).
+Username diubah dulu jadi email akun LMS lewat RPC LMS `get_email_by_username`
+(atau pola `username@examfilq.dev`). Hanya guru/admin SMP ABBS yang boleh masuk.
 
 ## Aturan yang berlaku
 
 - Absen **1× per hari**, dijaga `unique (user_id, tanggal)` di database.
-- Foto wajib; diambil dari kamera depan, dikirim bersama koordinat.
-- Jarak dihitung **di server** (haversine). Di luar radius → ditolak, aplikasi menampilkan jarak sebenarnya.
-- Jam memakai zona **Asia/Jakarta**, bukan jam perangkat. Guru tidak bisa memalsukan jam dengan mengubah jam HP.
-- **TOT** = jam absen ≤ batas TOT (default `06:50`). Di atas batas = **TL** (terlambat), tetap tercatat hadir.
-- Admin yang mencatat hadir manual menghasilkan kode **H** (hadir tanpa TOT) — dipakai kalau guru lupa absen.
-- Hari kerja default **Senin–Sabtu**. Hari libur yang diisi admin otomatis jadi `L` dan tidak dihitung alpa.
-- Hari kerja lewat tanpa absen = **A** (alpa). Hari ini yang belum absen = kosong, bukan alpa.
-- Akun admin hanya untuk rekap; absen hanya untuk akun ber-role `guru`.
+- Foto wajib; kamera depan, dikirim bersama koordinat.
+- Jarak, jam, dan TOT dihitung **di server** (Edge Function), bukan di browser.
+- **TOT** = jam absen ≤ batas TOT (default `06:50` WIB). Di atasnya = **TL** (terlambat).
+- Hari kerja default **Senin–Sabtu**; hari libur dari admin jadi `L` dan tidak dihitung alpa.
+- Hari kerja lewat tanpa absen = **A**; hari ini yang belum absen = kosong.
+- Admin mencatat hadir manual → kode **H** (hadir tanpa TOT), supaya tidak salah jadi TL.
 
 ## Yang bisa diubah admin (tanpa deploy)
 
-Buka **Rekap → ⚙︎ Pengaturan absensi**:
-
-- titik sekolah (lintang/bujur) — tombol "Gunakan lokasi saya sekarang" untuk kalibrasi saat berdiri di gerbang sekolah;
-- **radius** (10–5000 m, default 50 m);
-- jam batas TOT;
-- hari kerja (centang);
-- hari libur per tanggal.
-
-Semua tersimpan di tabel `absensi_pengaturan` / `absensi_libur`, tidak perlu ubah kode.
+Rekap → ⚙︎ Pengaturan absensi: titik sekolah (tombol "Gunakan lokasi saya sekarang"),
+**radius** (10–5000 m, default 50 m), jam batas TOT, hari kerja, dan hari libur.
 
 ## Rekap
 
-- Grid guru (baris) × tanggal (kolom), kode `TOT / TL / H / S / I / A / L`.
-- Kolom total: TOT, TL, S, I, A, %Hadir.
-- Klik sel → foto absen (signed URL 10 menit), jam, jarak, akurasi, dan ubah status manual
-  (+catatan, mis. "surat dokter").
-- **Export CSV** (UTF-8 BOM, langsung rapi di Excel) dan **Cetak** (A4 landscape).
+Grid guru × tanggal, kode `TOT / TL / H / S / I / A / L`, kolom total
+TOT/TL/H/S/I/A dan %Hadir (kolom total menempel di kanan). Klik sel → foto absen,
+jam, jarak, akurasi, dan ubah status + catatan. Ada **Export CSV** dan **Cetak** A4 landscape.
 
-## Batasan yang diketahui
+## Batasan
 
-- GPS bisa dipalsukan aplikasi fake-GPS. Untuk v1 diterima; foto wajah + jam + jarak tersimpan sebagai bukti.
-- Radius 50 m cukup ketat; di dalam gedung akurasi GPS bisa 15–40 m. Kalibrasi dulu (lihat pengaturan) dan pantau keluhan hari pertama.
-- Foto disimpan di bucket privat `absensi-foto`, hanya bisa dibaca pemiliknya dan admin. ±200–300 MB/bulan untuk 48 guru.
-- Bila akun LMS guru dihapus, baris absensinya ikut terhapus (`on delete cascade`).
+- GPS bisa dipalsukan aplikasi fake-GPS; foto + jam + jarak disimpan sebagai bukti.
+- Radius 50 m cukup ketat; akurasi GPS dalam gedung bisa 15–40 m. Kalibrasi lewat panel Pengaturan.
+- Edge Function = satu titik tambahan: kalau project `abbs-chat-belajar` dijeda/limit,
+  absensi ikut berhenti (login LMS tetap jalan).
+- Foto ±200–300 MB/bulan untuk 48 guru di bucket `absensi-foto`.
 
 ## Uji
 
-- Logika rekap (kode sel, total, hari efektif, libur, hari kerja, hadir manual):
-  buka `index.html?uji=1` → hasil di Console (harus **15/15 lulus**).
-- Pratinjau tampilan tanpa database: `tests/mock-ui.js` (rekap admin) dan `tests/mock-absen.js`
-  (halaman guru) dijalankan lewat Playwright MCP / Playwright biasa dengan `page.route`.
+- Logika rekap: buka `index.html?uji=1` → Console harus **15/15 lulus**.
+- Pratinjau UI tanpa database: `tests/mock-ui.js`, `tests/mock-absen.js`.
+- Uji dengan sesi LMS asli: `tests/uji-sesi.js` (butuh `.uji-sesi.json` sementara, jangan di-commit).

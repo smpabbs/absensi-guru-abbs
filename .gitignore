@@ -4,3 +4,7 @@
 # hasil screenshot pratinjau (tests/mock-*.js)
 absen-sudah.png
 absen-belum.png
+.uji-sesi.json
+
+supabase/.temp
+.uji-sesi.json

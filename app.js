@@ -59,18 +59,16 @@ function haversine(lat1, lon1, lat2, lon2) {
   return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// Pesan yang bisa ditindaklanjuti kalau tabel/fungsi belum dibuat di database.
-function pesanGalat(err, konteks) {
-  if (/does not exist|Could not find the table|schema cache|Could not find the function/i.test(err?.message || '')) {
-    return 'Database absensi belum disiapkan. Jalankan db/20261120_absensi_guru.sql di Supabase.';
-  }
-  return `${konteks}: ${err?.message || 'galat tidak dikenal'}`;
-}
-
+// Foto disimpan di project penyimpanan presensi; URL bertanda tangan diambil
+// lewat fungsi server (bukan akses langsung).
 async function urlFoto(path) {
   if (!path) return null;
-  const { data } = await db.storage.from('absensi-foto').createSignedUrl(path, 600);
-  return data?.signedUrl || null;
+  try {
+    const { url } = await api('foto', { path });
+    return url || null;
+  } catch {
+    return null;
+  }
 }
 
 function tampilkan(view) {
@@ -143,7 +141,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     return;
   }
   const { data: { session } } = await db.auth.getSession();
-  if (session?.user) await sesudahLogin(session.user);
+  if (session?.user) await sesudahLogin();
   else tampilkan('login');
 });
 
@@ -209,7 +207,7 @@ async function masuk(e) {
     const { data, error: err } = await db.auth.signInWithPassword({ email, password });
     if (err) throw new Error('Username atau kata sandi salah.');
 
-    await sesudahLogin(data.user);
+    await sesudahLogin();
     $('login-password').value = '';
   } catch (err) {
     salah.textContent = err.message;
@@ -228,59 +226,88 @@ async function keluar() {
   tampilkan('login');
 }
 
-async function sesudahLogin(user) {
-  const { data: p, error } = await db.from('profiles')
-    .select('id,nama,role,username,sekolah_id,status')
-    .eq('id', user.id).single();
+// ── API ke Edge Function "absen" (project penyimpanan presensi) ─────────────
+// Token login LMS dikirim apa adanya; fungsi di server yang memverifikasinya.
+async function api(action, isi = {}) {
+  const { data: { session } } = await db.auth.getSession();
+  const token = session?.access_token || '';
 
-  if (error || !p) { await db.auth.signOut(); tampilkan('login'); toast('Profil tidak ditemukan.'); return; }
-  if (!['guru', 'admin'].includes(p.role) || p.status !== 'aktif') {
+  let r;
+  try {
+    r = await fetch(`${APP_CONFIG.dataUrl}/functions/v1/absen`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: APP_CONFIG.dataKey,
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ action, ...isi })
+    });
+  } catch {
+    throw new Error('Tidak bisa menghubungi server absensi. Periksa koneksi internet.');
+  }
+
+  const j = await r.json().catch(() => ({}));
+
+  if (r.status === 401) {
+    await db.auth.signOut();
+    profil = null;
+    tampilkan('login');
+    throw new Error(j.message || 'Sesi habis, silakan login ulang.');
+  }
+  if (!r.ok) throw new Error(j.message || `Server menolak permintaan (${r.status}).`);
+  return j;
+}
+
+async function sesudahLogin() {
+  let boot;
+  try {
+    boot = await api('boot');
+  } catch (err) {
+    await db.auth.signOut();
+    tampilkan('login');
+    $('login-salah').hidden = false;
+    $('login-salah').textContent = err.message;
+    return;
+  }
+
+  profil = boot.profil;
+  pengaturan = boot.pengaturan;
+  absenHariIni = boot.hariIni || null;
+  $('siapa').textContent = profil.nama || profil.username || '';
+
+  if (boot.adminSekolah) {
+    tampilkan('rekap');
+    await muatRekap();
+  } else if (boot.guruSekolah) {
+    tampilkan('absen');
+    tampilkanAbsen(boot);
+    await muatRiwayat();
+  } else {
     await db.auth.signOut();
     tampilkan('login');
     $('login-salah').hidden = false;
     $('login-salah').textContent = 'Akun ini bukan guru/admin aktif SMP ABBS.';
-    return;
-  }
-
-  profil = p;
-  $('siapa').textContent = p.nama || p.username || '';
-
-  const { data: cfg } = await db.from('absensi_pengaturan').select('*').limit(1).maybeSingle();
-  pengaturan = cfg;
-
-  if (p.role === 'admin') {
-    tampilkan('rekap');
-    await muatRekap();
-  } else {
-    tampilkan('absen');
-    await muatAbsen();
   }
 }
 
 // ── absen (guru) ────────────────────────────────────────────────────────────
-async function muatAbsen() {
-  const tgl = tanggalWIB();
+function tampilkanAbsen(boot) {
+  const tgl = boot.tanggal || tanggalWIB();
   $('absen-halo').textContent = 'Assalamu\'alaikum, ' + (profil.nama || '').replace(/,.*$/, '');
-  $('absen-tanggal').textContent = tanggalPanjang(tgl) + ' · ' + jamWIB() + ' WIB';
+  $('absen-tanggal').textContent = tanggalPanjang(tgl) + ' · ' + (boot.jam || jamWIB()) + ' WIB';
 
   if (!pengaturan) {
     $('kartu-kamera').hidden = true;
-    $('info-pesan').textContent = 'Database absensi belum disiapkan. Jalankan db/20261120_absensi_guru.sql di Supabase.';
+    $('info-pesan').textContent = 'Pengaturan absensi belum dibuat. Hubungi admin.';
     $('info-pesan').className = 'pesan salah';
     return;
   }
   $('info-tot').textContent = potongJam(pengaturan.batas_tot) + ' WIB';
   $('info-radius').textContent = pengaturan.radius_m + ' m';
 
-  const { data: rec } = await db.from('absensi_guru')
-    .select('tanggal,jam,status,tepat_waktu,jarak_m,foto_path')
-    .eq('user_id', profil.id).eq('tanggal', tgl).maybeSingle();
-
-  absenHariIni = rec || null;
-  if (rec?.jam) tampilkanHasil(rec);
+  if (boot.hariIni?.jam) tampilkanHasil(boot.hariIni);
   else mulaiLokasi();
-
-  await muatRiwayat();
 }
 
 function tampilkanHasil(rec) {
@@ -293,7 +320,10 @@ function tampilkanHasil(rec) {
   $('hasil-lencana').className = 'lencana ' + (tot ? 'ok' : 'peringatan');
   $('hasil-jam').textContent = potongJam(rec.jam);
   $('hasil-sub').textContent = rec.jarak_m != null ? Math.round(rec.jarak_m) + ' m dari titik sekolah' : '';
-  if (rec.foto_path) {
+  if (rec.foto_url) {
+    $('hasil-foto').src = rec.foto_url;
+    $('hasil-foto').hidden = false;
+  } else if (rec.foto_path) {
     urlFoto(rec.foto_path).then(u => {
       if (!u) return;
       $('hasil-foto').src = u;
@@ -374,27 +404,16 @@ async function kirimAbsen() {
   try {
     const v = $('video'), c = $('canvas');
     if (!v.videoWidth) throw new Error('Kamera belum siap. Tunggu sebentar.');
-    // perkecil ke lebar 1024 supaya unggahan ringan
+    // perkecil ke lebar 1024 supaya kiriman ringan
     const skala = Math.min(1, 1024 / v.videoWidth);
     c.width = Math.round(v.videoWidth * skala);
     c.height = Math.round(v.videoHeight * skala);
     c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+    const foto = c.toDataURL('image/jpeg', 0.72);
 
-    const dataUrl = c.toDataURL('image/jpeg', 0.72);
-    const blob = await (await fetch(dataUrl)).blob();
-    const path = `${profil.id}/${tanggalWIB()}/${Date.now()}.jpg`;
-
-    const { error: errUnggah } = await db.storage.from('absensi-foto')
-      .upload(path, blob, { contentType: 'image/jpeg', upsert: false });
-    if (errUnggah) throw new Error('Gagal mengunggah foto: ' + errUnggah.message);
-
-    const { data, error } = await db.rpc('absensi_absen', {
-      p_lat: posisi.lat,
-      p_lon: posisi.lon,
-      p_akurasi: posisi.akurasi,
-      p_foto_path: path
+    const data = await api('absen', {
+      lat: posisi.lat, lon: posisi.lon, akurasi: posisi.akurasi, foto
     });
-    if (error) throw new Error('Gagal menyimpan absen: ' + error.message);
 
     if (!data.ok) {
       if (data.code === 'SUDAH') {
@@ -407,7 +426,10 @@ async function kirimAbsen() {
       return;
     }
 
-    tampilkanHasil({ tanggal: data.tanggal, jam: data.jam, status: 'hadir', tepat_waktu: data.tepat_waktu, jarak_m: data.jarak, foto_path: path });
+    tampilkanHasil({
+      tanggal: data.tanggal, jam: data.jam, status: 'hadir',
+      tepat_waktu: data.tepat_waktu, jarak_m: data.jarak, foto_url: data.foto_url
+    });
     toast(data.tepat_waktu ? 'Absen tercatat — TOT (tepat waktu).' : 'Absen tercatat — terlambat.');
     await muatRiwayat();
   } catch (err) {
@@ -418,15 +440,12 @@ async function kirimAbsen() {
 }
 
 async function muatRiwayat() {
-  const { data, error } = await db.from('absensi_guru')
-    .select('tanggal,jam,status,tepat_waktu,jarak_m')
-    .eq('user_id', profil.id)
-    .order('tanggal', { ascending: false })
-    .limit(14);
-
   const tb = $('riwayat');
-  if (error) {
-    tb.innerHTML = `<tr><td colspan="4" style="color:var(--merah)">${pesanGalat(error, 'Gagal memuat riwayat')}</td></tr>`;
+  let data;
+  try {
+    ({ riwayat: data } = await api('riwayat'));
+  } catch (err) {
+    tb.innerHTML = `<tr><td colspan="4" style="color:var(--merah)">${err.message}</td></tr>`;
     return;
   }
   if (!data?.length) {
@@ -455,31 +474,23 @@ async function muatRekap() {
   rekap.bulan = bulan;
   rekap.hariIni = tanggalWIB();
 
-  const [tahun, bln] = bulan.split('-').map(Number);
-  const jumlahHari = new Date(tahun, bln, 0).getDate();
-  const awal = `${bulan}-01`;
-  const akhir = `${bulan}-${String(jumlahHari).padStart(2, '0')}`;
-
-  if (pengaturan) {
-    rekap.hariKerja = new Set(pengaturan.hari_kerja || [1, 2, 3, 4, 5, 6]);
-    isiFormPengaturan();
+  let data;
+  try {
+    data = await api('rekap', { bulan });
+  } catch (err) {
+    toast(err.message);
+    return;
   }
 
-  const [guruRes, absenRes, liburRes] = await Promise.all([
-    db.from('profiles').select('id,nama').eq('role', 'guru').eq('sekolah_id', profil.sekolah_id).order('nama'),
-    db.from('absensi_guru').select('user_id,tanggal,jam,status,tepat_waktu,jarak_m,akurasi_m,foto_path,catatan,dicatat_oleh')
-      .gte('tanggal', awal).lte('tanggal', akhir),
-    db.from('absensi_libur').select('tanggal,keterangan').gte('tanggal', awal).lte('tanggal', akhir)
-  ]);
+  pengaturan = data.pengaturan || pengaturan;
+  rekap.hariKerja = new Set(pengaturan?.hari_kerja || [1, 2, 3, 4, 5, 6]);
+  rekap.guru = data.guru || [];
+  rekap.peta = new Map((data.rows || []).map(r => [r.user_id + '|' + r.tanggal, r]));
+  rekap.libur = new Set((data.libur || []).map(r => r.tanggal));
 
-  if (guruRes.error) { toast(pesanGalat(guruRes.error, 'Gagal memuat data guru')); return; }
-
-  rekap.guru = guruRes.data || [];
-  rekap.peta = new Map((absenRes.data || []).map(r => [r.user_id + '|' + r.tanggal, r]));
-  rekap.libur = new Set((liburRes.data || []).map(r => r.tanggal));
-
+  if (pengaturan) isiFormPengaturan();
   gambarUlangTabel();
-  gambarLibur(liburRes.data || []);
+  gambarLibur(data.libur || []);
 }
 
 function kodeSel(uid, tgl) {
@@ -631,15 +642,17 @@ async function setStatus(aksi) {
   if (modeDemo) return toast('Mode demo: perubahan tidak disimpan.');
   if (!modalAktif) return;
   const catatan = $('modal-catatan')?.value || null;
-  const { data, error } = await db.rpc('absensi_set_status', {
-    p_user_id: modalAktif.uid,
-    p_tanggal: modalAktif.tgl,
-    p_status: aksi === 'hapus' ? 'alpa' : aksi,
-    p_catatan: catatan,
-    p_hapus: aksi === 'hapus'
-  });
-  if (error) return toast('Gagal: ' + error.message);
-  if (!data.ok) return toast(data.message || 'Gagal mengubah status.');
+  try {
+    await api('set_status', {
+      user_id: modalAktif.uid,
+      tanggal: modalAktif.tgl,
+      status: aksi === 'hapus' ? 'alpa' : aksi,
+      catatan,
+      hapus: aksi === 'hapus'
+    });
+  } catch (err) {
+    return toast(err.message);
+  }
   tutupModal();
   toast('Status diperbarui.');
   await muatRekap();
@@ -674,14 +687,16 @@ async function simpanPengaturan() {
     lon: Number($('set-lon').value),
     radius_m: Math.round(Number($('set-radius').value)),
     batas_tot: $('set-tot').value,
-    hari_kerja: hari,
-    updated_at: new Date().toISOString()
+    hari_kerja: hari
   };
   if (!Number.isFinite(isi.lat) || !Number.isFinite(isi.lon)) return toast('Koordinat tidak valid.');
   if (!(isi.radius_m >= 10 && isi.radius_m <= 5000)) return toast('Radius harus 10–5000 meter.');
 
-  const { error } = await db.from('absensi_pengaturan').update(isi).eq('id', true);
-  if (error) return toast('Gagal menyimpan: ' + error.message);
+  try {
+    await api('simpan_pengaturan', isi);
+  } catch (err) {
+    return toast(err.message);
+  }
 
   pengaturan = { ...pengaturan, ...isi };
   rekap.hariKerja = new Set(hari);
@@ -715,8 +730,11 @@ function gambarLibur(daftar) {
   $('libur-daftar').querySelectorAll('[data-hapus]').forEach(b => {
     b.addEventListener('click', async () => {
       if (modeDemo) return toast('Mode demo: hari libur tidak disimpan.');
-      const { error } = await db.from('absensi_libur').delete().eq('tanggal', b.dataset.hapus);
-      if (error) return toast('Gagal menghapus libur: ' + error.message);
+      try {
+        await api('libur_hapus', { tanggal: b.dataset.hapus });
+      } catch (err) {
+        return toast(err.message);
+      }
       await muatRekap();
     });
   });
@@ -727,8 +745,11 @@ async function tambahLibur() {
   const tanggal = $('libur-tanggal').value;
   const keterangan = $('libur-ket').value.trim();
   if (!tanggal) return toast('Pilih tanggal libur.');
-  const { error } = await db.from('absensi_libur').insert({ tanggal, keterangan: keterangan || null });
-  if (error) return toast('Gagal menambah libur: ' + error.message);
+  try {
+    await api('libur_tambah', { tanggal, keterangan: keterangan || null });
+  } catch (err) {
+    return toast(err.message);
+  }
   $('libur-tanggal').value = '';
   $('libur-ket').value = '';
   toast('Hari libur ditambahkan.');

@@ -2,9 +2,11 @@
 
 Status: **draft v1** · 20 Nov 2026 · rancangan sudah diimplementasikan (lihat `README.md`)
 
-> Implementasi memakai HTML+CSS+JS statis + fungsi Postgres (tanpa build step, tanpa server aplikasi).
-> Validasi jarak/jam/TOT berjalan di database. Sisa pekerjaan: jalankan `db/20261120_absensi_guru.sql`
-> di Supabase LMS, lalu uji lapangan (kalibrasi titik & radius).
+> Implementasi memakai HTML+CSS+JS statis + fungsi server, tanpa build step.
+> **Revisi 20 Nov:** data presensi dipindah ke project terpisah `abbs-chat-belajar`
+> (tabel `absen_presensi`, `absen_pengaturan`, `absen_libur`, bucket `absensi-foto`)
+> lewat Edge Function `absen`, karena login tetap harus memakai akun LMS.
+> Rincian alur ada di `README.md`; sisa pekerjaan: uji lapangan (kalibrasi titik & radius).
 
 ---
 

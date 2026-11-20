@@ -1,0 +1,359 @@
+// Edge Function "absen" — project abbs-chat-belajar (lthyqvxpiykqfaqrumcx)
+//
+// Login tetap di LMS (drlsnhnqxkcgcuskswwx). Token LMS tidak berlaku di project ini,
+// jadi setiap permintaan diverifikasi ke LMS lebih dulu (/auth/v1/user), baru
+// data presensi ditulis/dibaca dengan service role ke schema `absensi`.
+//
+// Deploy:
+//   supabase functions deploy absen --project-ref lthyqvxpiykqfaqrumcx --no-verify-jwt
+//   supabase secrets set LMS_ANON_KEY=... --project-ref lthyqvxpiykqfaqrumcx
+
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
+
+const LMS_URL = Deno.env.get("LMS_URL") ?? "https://drlsnhnqxkcgcuskswwx.supabase.co";
+const LMS_KEY = Deno.env.get("LMS_ANON_KEY") ?? "sb_publishable_nN04gESpLOjSg7KQObRfCA_6UjsRK99"; // publishable key LMS (memang publik)
+const BUCKET = "absensi-foto";
+
+const admin = createClient(
+  Deno.env.get("SUPABASE_URL")!,
+  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+  { auth: { persistSession: false } }
+);
+
+const cors = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS"
+};
+
+const jawab = (isi: unknown, status = 200) =>
+  new Response(JSON.stringify(isi), {
+    status,
+    headers: { ...cors, "Content-Type": "application/json" }
+  });
+
+const galat = (pesan: string, status = 200, kode = "GALAT") =>
+  jawab({ ok: false, code: kode, message: pesan }, status);
+
+// ── util ────────────────────────────────────────────────────────────────────
+function wib(d = new Date()) {
+  const tanggal = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit"
+  }).format(d);
+  const jam = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Jakarta", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false
+  }).format(d);
+  return { tanggal, jam };
+}
+
+function jarakMeter(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 6371000, r = Math.PI / 180;
+  const dLat = (lat2 - lat1) * r, dLon = (lon2 - lon1) * r;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * r) * Math.cos(lat2 * r) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+const isoDow = (tgl: string) => {
+  const d = new Date(tgl + "T00:00:00Z").getUTCDay();
+  return d === 0 ? 7 : d;
+};
+
+const potongJam = (j: string | null) => (j ? j.slice(0, 5) : null);
+
+async function profilDariToken(token: string) {
+  const h = { apikey: LMS_KEY, Authorization: `Bearer ${token}` };
+  const r = await fetch(`${LMS_URL}/auth/v1/user`, { headers: h });
+  if (!r.ok) return null;
+  const u = await r.json();
+  if (!u?.id) return null;
+
+  const p = await fetch(
+    `${LMS_URL}/rest/v1/profiles?select=id,nama,role,username,sekolah_id,status&id=eq.${u.id}`,
+    { headers: h }
+  );
+  if (!p.ok) return null;
+  const arr = await p.json();
+  return arr?.[0] ?? null;
+}
+
+async function daftarGuru(token: string, sekolahId: string) {
+  const r = await fetch(
+    `${LMS_URL}/rest/v1/profiles?select=id,nama&role=eq.guru&sekolah_id=eq.${sekolahId}&order=nama`,
+    { headers: { apikey: LMS_KEY, Authorization: `Bearer ${token}` } }
+  );
+  if (!r.ok) return [];
+  return await r.json();
+}
+
+async function ambilPengaturan() {
+  const { data } = await admin.from("absen_pengaturan").select("*").eq("id", true).maybeSingle();
+  return data;
+}
+
+async function urlFoto(path: string) {
+  const { data } = await admin.storage.from(BUCKET).createSignedUrl(path, 600);
+  return data?.signedUrl ?? null;
+}
+
+// ── handler ─────────────────────────────────────────────────────────────────
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+  if (req.method !== "POST") return galat("Gunakan POST.", 405);
+
+  const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+  if (!token) return galat("Sesi habis, silakan login ulang.", 401, "UNAUTH");
+
+  const profil = await profilDariToken(token);
+  if (!profil || profil.status !== "aktif") return galat("Akun tidak aktif di LMS.", 401, "UNAUTH");
+
+  const pengaturan = await ambilPengaturan();
+  if (!pengaturan) return galat("Pengaturan absensi belum dibuat di database.", 500, "KONFIG");
+
+  const adminSekolah = profil.role === "admin" &&
+    (profil.sekolah_id === pengaturan.sekolah_id || profil.sekolah_id === null);
+  const guruSekolah = profil.role === "guru" && profil.sekolah_id === pengaturan.sekolah_id;
+
+  const body = await req.json().catch(() => ({} as Record<string, unknown>));
+  const aksi = String(body.action ?? "");
+  const { tanggal, jam } = wib();
+
+  try {
+    switch (aksi) {
+      // ── data awal setelah login ───────────────────────────────────────────
+      case "boot": {
+        if (!guruSekolah && !adminSekolah) return galat("Akun ini tidak berhak memakai absensi ini.", 403, "AKSES");
+        let hariIni = null;
+        if (guruSekolah) {
+          const { data } = await admin.from("absen_presensi")
+            .select("tanggal,jam,status,tepat_waktu,jarak_m,foto_path")
+            .eq("user_id", profil.id).eq("tanggal", tanggal).maybeSingle();
+          if (data) {
+            hariIni = {
+              ...data,
+              jam: potongJam(data.jam),
+              foto_url: data.foto_path ? await urlFoto(data.foto_path) : null
+            };
+          }
+        }
+        return jawab({
+          profil: { id: profil.id, nama: profil.nama, username: profil.username, role: profil.role },
+          guruSekolah, adminSekolah, pengaturan, tanggal, jam, hariIni
+        });
+      }
+
+      // ── absen mandiri (guru) ──────────────────────────────────────────────
+      case "absen": {
+        if (!guruSekolah) return galat("Akun admin hanya untuk rekap.", 403, "AKUN");
+
+        if (!pengaturan.hari_kerja.includes(isoDow(tanggal))) {
+          return galat("Hari ini bukan hari kerja.", 200, "LIBUR");
+        }
+        const { data: libur } = await admin.from("absen_libur")
+          .select("tanggal").eq("tanggal", tanggal).maybeSingle();
+        if (libur) return galat("Hari ini tercatat libur.", 200, "LIBUR");
+
+        const lat = Number(body.lat), lon = Number(body.lon), akurasi = Number(body.akurasi);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+          return galat("Lokasi tidak terbaca. Aktifkan GPS lalu coba lagi.", 200, "LOKASI");
+        }
+
+        const jarak = jarakMeter(lat, lon, pengaturan.lat, pengaturan.lon);
+        if (jarak > pengaturan.radius_m) {
+          return jawab({
+            ok: false, code: "RADIUS",
+            jarak: Math.round(jarak), radius_m: pengaturan.radius_m,
+            message: `Anda ${Math.round(jarak)} m dari titik sekolah. Maksimal ${pengaturan.radius_m} m.`
+          });
+        }
+
+        const { data: sudah } = await admin.from("absen_presensi")
+          .select("jam,tepat_waktu,jarak_m,foto_path")
+          .eq("user_id", profil.id).eq("tanggal", tanggal).maybeSingle();
+        if (sudah) {
+          return jawab({
+            ok: false, code: "SUDAH",
+            jam: potongJam(sudah.jam), tepat_waktu: sudah.tepat_waktu,
+            jarak: sudah.jarak_m ? Math.round(sudah.jarak_m) : null,
+            foto_path: sudah.foto_path,
+            message: `Anda sudah absen hari ini pukul ${potongJam(sudah.jam)}.`
+          });
+        }
+
+        // foto
+        let fotoPath: string | null = null;
+        const b64 = String(body.foto ?? "");
+        if (b64) {
+          const bersih = b64.includes(",") ? b64.split(",")[1] : b64;
+          if (bersih.length > 4_000_000) return galat("Foto terlalu besar.", 200, "FOTO");
+          const biner = Uint8Array.from(atob(bersih), (c) => c.charCodeAt(0));
+          fotoPath = `${profil.id}/${tanggal}/${Date.now()}.jpg`;
+          const { error: eh } = await admin.storage.from(BUCKET)
+            .upload(fotoPath, biner, { contentType: "image/jpeg", upsert: false });
+          if (eh) fotoPath = null;
+        }
+
+        const tepatWaktu = jam <= pengaturan.batas_tot.replace(/^(\d):/, "0$1:");
+        const baris = {
+          user_id: profil.id,
+          sekolah_id: pengaturan.sekolah_id,
+          nama: profil.nama,
+          tanggal,
+          jam,
+          status: "hadir",
+          tepat_waktu: tepatWaktu,
+          lat, lon,
+          akurasi_m: Number.isFinite(akurasi) ? akurasi : null,
+          jarak_m: jarak,
+          foto_path: fotoPath
+        };
+
+        const { error } = await admin.from("absen_presensi").insert(baris);
+        if (error) {
+          if (String(error.code) === "23505") return galat("Anda sudah absen hari ini.", 200, "SUDAH");
+          return galat("Gagal menyimpan absen: " + error.message, 500);
+        }
+
+        return jawab({
+          ok: true, tanggal, jam: potongJam(jam), tepat_waktu: tepatWaktu,
+          batas_tot: potongJam(pengaturan.batas_tot), jarak: Math.round(jarak),
+          radius_m: pengaturan.radius_m, nama: profil.nama,
+          foto_url: fotoPath ? await urlFoto(fotoPath) : null
+        });
+      }
+
+      // ── riwayat guru ──────────────────────────────────────────────────────
+      case "riwayat": {
+        if (profil.role !== "guru") return galat("Hanya untuk guru.", 403, "AKSES");
+        const { data, error } = await admin.from("absen_presensi")
+          .select("tanggal,jam,status,tepat_waktu,jarak_m")
+          .eq("user_id", profil.id).order("tanggal", { ascending: false }).limit(14);
+        if (error) return galat("Gagal memuat riwayat: " + error.message, 500);
+        return jawab({ riwayat: (data ?? []).map((r) => ({ ...r, jam: potongJam(r.jam) })) });
+      }
+
+      // ── rekap bulanan (admin) ─────────────────────────────────────────────
+      case "rekap": {
+        if (!adminSekolah) return galat("Hanya admin sekolah.", 403, "AKSES");
+        const bulan = String(body.bulan ?? "").slice(0, 7);
+        if (!/^\d{4}-\d{2}$/.test(bulan)) return galat("Bulan tidak valid.", 200, "DATA");
+
+        const [th, bl] = bulan.split("-").map(Number);
+        const jumlahHari = new Date(Date.UTC(th, bl, 0)).getUTCDate();
+        const awal = `${bulan}-01`;
+        const akhir = `${bulan}-${String(jumlahHari).padStart(2, "0")}`;
+
+        const guru = await daftarGuru(token, pengaturan.sekolah_id);
+        const { data: rows, error } = await admin.from("absen_presensi")
+          .select("user_id,tanggal,jam,status,tepat_waktu,jarak_m,akurasi_m,foto_path,catatan,dicatat_oleh")
+          .eq("sekolah_id", pengaturan.sekolah_id)
+          .gte("tanggal", awal).lte("tanggal", akhir);
+        if (error) return galat("Gagal memuat rekap: " + error.message, 500);
+
+        const { data: libur } = await admin.from("absen_libur")
+          .select("tanggal,keterangan").gte("tanggal", awal).lte("tanggal", akhir);
+
+        return jawab({ guru, rows: rows ?? [], libur: libur ?? [], pengaturan });
+      }
+
+      // ── koreksi status (admin) ────────────────────────────────────────────
+      case "set_status": {
+        if (!adminSekolah) return galat("Hanya admin sekolah.", 403, "AKSES");
+        const uid = String(body.user_id ?? "");
+        const tgl = String(body.tanggal ?? "");
+        const status = String(body.status ?? "");
+        const catatan = body.catatan ? String(body.catatan) : null;
+        if (!/^[0-9a-f-]{36}$/i.test(uid) || !/^\d{4}-\d{2}-\d{2}$/.test(tgl)) {
+          return galat("Data tidak lengkap.", 200, "DATA");
+        }
+
+        if (body.hapus) {
+          const { error } = await admin.from("absen_presensi").delete()
+            .eq("user_id", uid).eq("tanggal", tgl);
+          if (error) return galat("Gagal menghapus: " + error.message, 500);
+          return jawab({ ok: true, hapus: true });
+        }
+
+        if (!["hadir", "izin", "sakit", "alpa"].includes(status)) {
+          return galat("Status tidak dikenal.", 200, "DATA");
+        }
+
+        const { data: ada } = await admin.from("absen_presensi")
+          .select("foto_path,dicatat_oleh").eq("user_id", uid).eq("tanggal", tgl).maybeSingle();
+
+        const baris: Record<string, unknown> = {
+          user_id: uid,
+          sekolah_id: pengaturan.sekolah_id,
+          tanggal: tgl,
+          status,
+          catatan,
+          dicatat_oleh: ada?.foto_path ? (ada.dicatat_oleh ?? null) : profil.id
+        };
+        if (!ada) { baris.jam = "00:00:00"; baris.tepat_waktu = false; }
+
+        const { error } = await admin.from("absen_presensi").upsert(baris, { onConflict: "user_id,tanggal" });
+        if (error) return galat("Gagal menyimpan status: " + error.message, 500);
+        return jawab({ ok: true });
+      }
+
+      // ── pengaturan (admin) ────────────────────────────────────────────────
+      case "simpan_pengaturan": {
+        if (!adminSekolah) return galat("Hanya admin sekolah.", 403, "AKSES");
+        const radius = Number(body.radius_m);
+        const lat = Number(body.lat), lon = Number(body.lon);
+        const batas = String(body.batas_tot ?? "");
+        const hari = Array.isArray(body.hari_kerja) ? body.hari_kerja.map(Number) : [];
+
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) return galat("Koordinat tidak valid.", 200, "DATA");
+        if (!(radius >= 10 && radius <= 5000)) return galat("Radius harus 10-5000 meter.", 200, "DATA");
+        if (!/^\d{2}:\d{2}$/.test(batas)) return galat("Jam batas TOT tidak valid.", 200, "DATA");
+        if (!hari.length || hari.some((h) => !(h >= 1 && h <= 7))) return galat("Hari kerja tidak valid.", 200, "DATA");
+
+        const { error } = await admin.from("absen_pengaturan").update({
+          lat, lon, radius_m: Math.round(radius), batas_tot: batas,
+          hari_kerja: hari, updated_at: new Date().toISOString()
+        }).eq("id", true);
+        if (error) return galat("Gagal menyimpan pengaturan: " + error.message, 500);
+        return jawab({ ok: true });
+      }
+
+      // ── hari libur (admin) ────────────────────────────────────────────────
+      case "libur_tambah": {
+        if (!adminSekolah) return galat("Hanya admin sekolah.", 403, "AKSES");
+        const tgl = String(body.tanggal ?? "");
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(tgl)) return galat("Tanggal tidak valid.", 200, "DATA");
+        const { error } = await admin.from("absen_libur")
+          .upsert({ tanggal: tgl, keterangan: body.keterangan ? String(body.keterangan) : null });
+        if (error) return galat("Gagal menambah libur: " + error.message, 500);
+        return jawab({ ok: true });
+      }
+
+      case "libur_hapus": {
+        if (!adminSekolah) return galat("Hanya admin sekolah.", 403, "AKSES");
+        const { error } = await admin.from("absen_libur").delete().eq("tanggal", String(body.tanggal ?? ""));
+        if (error) return galat("Gagal menghapus libur: " + error.message, 500);
+        return jawab({ ok: true });
+      }
+
+      // ── foto: signed url ──────────────────────────────────────────────────
+      case "foto": {
+        const path = String(body.path ?? "");
+        if (!path) return galat("Path kosong.", 200, "DATA");
+        const milikSendiri = path.startsWith(`${profil.id}/`);
+        if (!milikSendiri && !adminSekolah) return galat("Tidak berhak melihat foto ini.", 403, "AKSES");
+        const url = await urlFoto(path);
+        if (!url) return galat("Foto tidak ditemukan.", 404, "FOTO");
+        return jawab({ url });
+      }
+
+      case "versi":
+        return jawab({ ok: true, versi: "1.0", waktu: wib() });
+
+      default:
+        return galat("Aksi tidak dikenal: " + aksi, 400, "DATA");
+    }
+  } catch (e) {
+    console.error("absen error", aksi, e);
+    return galat("Kesalahan server: " + (e instanceof Error ? e.message : String(e)), 500);
+  }
+});
