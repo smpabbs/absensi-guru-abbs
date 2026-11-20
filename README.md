@@ -52,7 +52,9 @@ LMS lebih dulu. Kata sandi tidak pernah disalin dan tidak bisa dibaca (hash bcry
    ```
    `LMS_ANON_KEY` = publishable key LMS (ada fallback di dalam kode, jadi jarang perlu diubah).
 3. **Frontend**: ubah `config.js` bila project berubah, lalu `git push` (Pages
-   memperbarui sendiri ±1 menit).
+   memperbarui sendiri ±1 menit). Setiap kali mengubah `styles.css` atau `app.js`,
+   naikkan nomor versi di `index.html` (`styles.css?v=3` / `app.js?v=3` → `v=4`)
+   supaya browser tidak memakai file lama dari cache.
 4. **Uji lokal**: `python -m http.server 8080` lalu buka <http://localhost:8080>.
    Jangan lewat `file://` — kamera & GPS butuh origin aman.
 
