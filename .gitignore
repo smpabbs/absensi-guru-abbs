@@ -1,0 +1,6 @@
+.vercel
+*.log
+
+# hasil screenshot pratinjau (tests/mock-*.js)
+absen-sudah.png
+absen-belum.png

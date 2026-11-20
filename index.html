@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f6b57">
+<title>Absensi Guru — SMP ABBS Surakarta</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230f6b57'/%3E%3Ctext x='16' y='22' font-family='sans-serif' font-size='13' font-weight='700' fill='%23fff' text-anchor='middle'%3EA%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="topbar" id="topbar" hidden>
+  <div class="merek">
+    <div class="logo">ABBS</div>
+    <div>
+      <strong>Absensi Guru</strong>
+      <span>SMP ABBS Surakarta</span>
+    </div>
+  </div>
+  <span id="siapa" style="font-size:13px;color:var(--teks-lembut)"></span>
+  <button class="tombol putih kecil" id="tombol-keluar">Keluar</button>
+</header>
+
+<!-- ── LOGIN ─────────────────────────────────────────────────────────────── -->
+<main class="wrap-sempit" id="view-login" hidden>
+  <div class="login-kepala">
+    <div class="logo">ABBS</div>
+    <h1>Absensi Guru</h1>
+    <p>SMP ABBS Surakarta · masuk dengan akun LMS</p>
+  </div>
+
+  <form class="kartu" id="form-login" autocomplete="on">
+    <div class="pesan salah" id="login-salah" hidden></div>
+    <div class="bidang">
+      <label for="login-username">Username</label>
+      <input type="text" id="login-username" name="username" autocomplete="username"
+             placeholder="contoh: tri.wijayanti" required>
+    </div>
+    <div class="bidang">
+      <label for="login-password">Kata sandi</label>
+      <input type="password" id="login-password" name="password" autocomplete="current-password"
+             placeholder="kata sandi LMS" required>
+    </div>
+    <button class="tombol lebar" type="submit" id="login-masuk">Masuk</button>
+  </form>
+  <p class="login-kaki">Lupa kata sandi? Hubungi admin LMS sekolah.</p>
+</main>
+
+<!-- ── ABSEN ─────────────────────────────────────────────────────────────── -->
+<main class="wrap" id="view-absen" hidden>
+  <div class="judul-halaman">
+    <h1 id="absen-halo">Assalamu'alaikum</h1>
+    <p id="absen-tanggal"></p>
+  </div>
+
+  <div class="absen-grid">
+    <section class="kartu" id="kartu-kamera">
+      <div class="kamera" id="kamera">
+        <video id="video" autoplay playsinline muted hidden></video>
+        <canvas id="canvas"></canvas>
+        <div class="kosong" id="kamera-kosong">Kamera belum aktif</div>
+      </div>
+      <button class="tombol lebar besar" id="tombol-kamera" style="margin-top:14px">Aktifkan Kamera</button>
+      <button class="tombol lebar besar" id="tombol-absen" style="margin-top:10px" hidden>Absen Sekarang</button>
+      <p style="font-size:12px;color:var(--teks-lembut);margin-top:10px;text-align:center">
+        Foto wajah diambil saat absen. Pastikan Anda berada di lingkungan sekolah.
+      </p>
+    </section>
+
+    <section class="kartu">
+      <h2 style="font-size:15px;margin-bottom:4px">Status hari ini</h2>
+      <div class="status-baris">
+        <span>Jarak ke titik sekolah</span>
+        <span class="nilai" id="info-jarak">—</span>
+      </div>
+      <div class="status-baris">
+        <span>Akurasi GPS</span>
+        <span class="nilai" id="info-akurasi">—</span>
+      </div>
+      <div class="status-baris">
+        <span>Batas tepat waktu (TOT)</span>
+        <span class="nilai" id="info-tot">—</span>
+      </div>
+      <div class="status-baris">
+        <span>Radius absen</span>
+        <span class="nilai" id="info-radius">—</span>
+      </div>
+      <div class="pesan info" id="info-pesan" style="margin-top:14px">Menunggu lokasi GPS…</div>
+
+      <div id="hasil" hidden>
+        <div class="hasil-sukses">
+          <div class="lencana ok" id="hasil-lencana">TOT</div>
+          <div class="jam" id="hasil-jam">--:--</div>
+          <div class="sub" id="hasil-sub"></div>
+          <img class="foto-hasil" id="hasil-foto" alt="Foto absen" hidden>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <section class="kartu" style="margin-top:16px">
+    <h2 style="font-size:15px;margin-bottom:10px">Riwayat 14 hari terakhir</h2>
+    <table class="riwayat">
+      <thead><tr><th>Tanggal</th><th>Jam</th><th>Status</th><th>Jarak</th></tr></thead>
+      <tbody id="riwayat"><tr><td colspan="4" style="color:var(--teks-lembut)">Memuat…</td></tr></tbody>
+    </table>
+  </section>
+</main>
+
+<!-- ── REKAP ADMIN ───────────────────────────────────────────────────────── -->
+<main class="wrap" id="view-rekap" hidden>
+  <div class="judul-halaman">
+    <h1>Rekap Absensi Guru</h1>
+    <p id="rekap-bulan-label"></p>
+  </div>
+
+  <details class="pengaturan" id="pengaturan-box">
+    <summary>⚙︎ Pengaturan absensi (titik, radius, jam TOT, hari kerja, hari libur)</summary>
+    <div class="kartu">
+      <div class="form-grid">
+        <div>
+          <label for="set-lat">Lintang titik sekolah</label>
+          <input type="number" id="set-lat" step="0.000001">
+        </div>
+        <div>
+          <label for="set-lon">Bujur titik sekolah</label>
+          <input type="number" id="set-lon" step="0.000001">
+        </div>
+        <div>
+          <label for="set-radius">Radius absen (meter)</label>
+          <input type="number" id="set-radius" min="10" max="5000" step="1">
+        </div>
+        <div>
+          <label for="set-tot">Batas TOT (jam)</label>
+          <input type="time" id="set-tot">
+        </div>
+      </div>
+      <div style="margin-top:12px">
+        <label>Hari kerja</label>
+        <div class="hari" id="set-hari"></div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
+        <button class="tombol kecil" id="set-simpan">Simpan pengaturan</button>
+        <button class="tombol putih kecil" id="set-lokasi-saya">Gunakan lokasi saya sekarang</button>
+        <span id="set-info" style="font-size:12px;color:var(--teks-lembut);align-self:center"></span>
+      </div>
+
+      <hr style="border:none;border-top:1px solid var(--garis);margin:16px 0">
+      <label>Hari libur</label>
+      <div class="form-grid">
+        <div><input type="date" id="libur-tanggal"></div>
+        <div><input type="text" id="libur-ket" placeholder="Keterangan (mis. Libur semester)"></div>
+        <div><button class="tombol putih kecil" id="libur-tambah">Tambah libur</button></div>
+      </div>
+      <div class="libur-daftar" id="libur-daftar"></div>
+    </div>
+  </details>
+
+  <div class="kontrol">
+    <div>
+      <label for="rekap-bulan">Bulan</label>
+      <input type="month" id="rekap-bulan">
+    </div>
+    <div class="cari">
+      <label for="rekap-cari">Cari guru</label>
+      <input type="search" id="rekap-cari" placeholder="nama guru…">
+    </div>
+    <button class="tombol putih" id="rekap-csv">Export CSV</button>
+    <button class="tombol putih" id="rekap-cetak">Cetak</button>
+  </div>
+
+  <div class="ringkas" id="rekap-ringkas"></div>
+
+  <div class="gulir">
+    <table class="rekap" id="tabel-rekap">
+      <thead></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <p style="font-size:12px;color:var(--teks-lembut);margin-top:10px">
+    TOT = hadir paling lambat batas jam tepat waktu · TL = terlambat · H = hadir dicatat admin ·
+    S = sakit · I = izin · A = alpa · L = libur. Klik sel untuk melihat foto atau mengubah status.
+  </p>
+</main>
+
+<div class="tirai" id="tirai" hidden>
+  <div class="modal" id="modal"></div>
+</div>
+
+<div id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
