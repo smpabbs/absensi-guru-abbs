@@ -1,4 +1,4 @@
-﻿// Pratinjau halaman absen guru tanpa database (mock Edge Function).
+// Pratinjau halaman absen guru tanpa database (mock Edge Function).
 // Jalankan lewat Playwright MCP: browser_run_code_unsafe({ filename: '...' })
 
 async (page) => {
@@ -14,7 +14,12 @@ async (page) => {
   const boot = {
     profil: { id: UID, nama: 'Tri Wijayanti, M.Pd', username: 'tri.wijayanti', role: 'guru' },
     guruSekolah: true, adminSekolah: false, pengaturan,
-    tanggal: '2026-11-20', jam: '06:38:12', hariIni: null
+    tanggal: '2026-11-20', jam: '06:38:12', hariIni: null,
+    periode: {
+      periode: { mulai: '2026-11-21', selesai: '2026-12-20', label: '21 Nov 2026 - 20 Des 2026' },
+      total: { tot: 12, terlambat: 3, hadir: 15, sakit: 1, izin: 2, alpa: 0 },
+      efektif: 20, persen: 75
+    }
   };
 
   const riwayat = {
@@ -36,7 +41,11 @@ async (page) => {
 
   await page.route('**/functions/v1/absen', async (route) => {
     const isi = JSON.parse(route.request().postData() || '{}');
-    const jawab = isi.action === 'boot' ? boot : isi.action === 'riwayat' ? riwayat : { ok: true };
+    const jawab = isi.action === 'boot' ? boot
+      : isi.action === 'riwayat' ? riwayat
+      : isi.action === 'absen' ? { ok: true, tanggal: '2026-11-20', jam: '06:41', tepat_waktu: true, jarak: 3, foto_url: null }
+      : isi.action === 'rekap_saya' ? boot.periode
+      : { ok: true };
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(jawab) });
   });
 

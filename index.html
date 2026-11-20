@@ -59,17 +59,20 @@
       <div class="kamera" id="kamera">
         <video id="video" autoplay playsinline muted hidden></video>
         <canvas id="canvas"></canvas>
-        <div class="kosong" id="kamera-kosong">Kamera belum aktif</div>
+        <div class="kosong" id="kamera-kosong">Menyiapkan kamera…</div>
+        <span class="sudut s1"></span><span class="sudut s2"></span>
+        <span class="sudut s3"></span><span class="sudut s4"></span>
       </div>
-      <button class="tombol lebar besar" id="tombol-kamera" style="margin-top:14px">Aktifkan Kamera</button>
-      <button class="tombol lebar besar" id="tombol-absen" style="margin-top:10px" hidden>Absen Sekarang</button>
-      <p style="font-size:12px;color:var(--teks-lembut);margin-top:10px;text-align:center">
-        Foto wajah diambil saat absen. Pastikan Anda berada di lingkungan sekolah.
-      </p>
+      <p class="kamera-status" id="kamera-status">Menunggu izin kamera…</p>
+      <button class="tombol lebar besar" id="tombol-absen" hidden>Absen Sekarang</button>
+      <p class="kamera-catatan">Foto diambil otomatis saat Anda menekan Absen. Pastikan wajah terlihat.</p>
     </section>
 
     <section class="kartu">
-      <h2 style="font-size:15px;margin-bottom:4px">Status hari ini</h2>
+      <div class="kepala-kartu">
+        <h2>Status hari ini</h2>
+        <button class="tombol putih kecil" id="tombol-lokasi" type="button">Perbarui lokasi</button>
+      </div>
       <div class="status-baris">
         <span>Jarak ke titik sekolah</span>
         <span class="nilai" id="info-jarak">—</span>
@@ -79,7 +82,7 @@
         <span class="nilai" id="info-akurasi">—</span>
       </div>
       <div class="status-baris">
-        <span>Batas tepat waktu (TOT)</span>
+        <span>Batas tepat waktu</span>
         <span class="nilai" id="info-tot">—</span>
       </div>
       <div class="status-baris">
@@ -90,14 +93,36 @@
 
       <div id="hasil" hidden>
         <div class="hasil-sukses">
-          <div class="lencana ok" id="hasil-lencana">TOT</div>
+          <div class="lencana ok" id="hasil-lencana">TEPAT WAKTU</div>
           <div class="jam" id="hasil-jam">--:--</div>
           <div class="sub" id="hasil-sub"></div>
-          <img class="foto-hasil" id="hasil-foto" alt="Foto absen" hidden>
+          <p class="hasil-pesan" id="hasil-pesan">Absen berhasil terkirim.</p>
         </div>
       </div>
     </section>
   </div>
+
+  <section class="kartu" id="kartu-periode" hidden>
+    <div class="kepala-kartu">
+      <div>
+        <h2>Ringkasan periode gaji</h2>
+        <p class="kepala-sub" id="periode-label">—</p>
+      </div>
+      <span class="lencana ok" id="periode-persen">0%</span>
+    </div>
+    <div class="periode-grid">
+      <div><b id="p-tot">0</b><span>Tepat waktu</span></div>
+      <div><b id="p-terlambat">0</b><span>Terlambat</span></div>
+      <div><b id="p-hadir">0</b><span>Total masuk</span></div>
+      <div><b id="p-sakit">0</b><span>Sakit</span></div>
+      <div><b id="p-izin">0</b><span>Izin</span></div>
+      <div><b id="p-alpa">0</b><span>Alpa</span></div>
+    </div>
+    <p class="kepala-sub" style="margin-top:10px">
+      Dihitung <b>tanggal 21 bulan lalu sampai tanggal 20 bulan ini</b> (periode penggajian),
+      dari <span id="p-efektif">0</span> hari kerja efektif.
+    </p>
+  </section>
 
   <section class="kartu" style="margin-top:16px">
     <h2 style="font-size:15px;margin-bottom:10px">Riwayat 14 hari terakhir</h2>
@@ -184,8 +209,9 @@
     </table>
   </div>
   <p style="font-size:12px;color:var(--teks-lembut);margin-top:10px">
-    TOT = hadir paling lambat batas jam tepat waktu · TL = terlambat · H = hadir dicatat admin ·
-    S = sakit · I = izin · A = alpa · L = libur. Klik sel untuk melihat foto atau mengubah status.
+    Sel berisi <b>jam absen</b>: hijau = tepat waktu, kuning = terlambat.
+    <b>H</b> hadir dicatat admin · <b>S</b> sakit · <b>I</b> izin · <b>A</b> alpa · <b>L</b> libur.
+    Ketuk sel untuk melihat foto dan rinciannya.
   </p>
 </main>
 

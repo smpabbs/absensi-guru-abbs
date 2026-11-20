@@ -60,7 +60,7 @@ LMS lebih dulu. Kata sandi tidak pernah disalin dan tidak bisa dibaca (hash bcry
 
 | Peran | Akun | Yang terlihat |
 |---|---|---|
-| Guru | username LMS (mis. `tri.wijayanti`) + kata sandi LMS | halaman absen + riwayat 14 hari |
+| Guru | username LMS (mis. `tri.wijayanti`) + kata sandi LMS | halaman absen, ringkasan periode gaji, riwayat 14 hari |
 | Admin | `admin.abbs` + kata sandi LMS | rekap bulanan + pengaturan |
 
 Username diubah dulu jadi email akun LMS lewat RPC LMS `get_email_by_username`
@@ -69,7 +69,9 @@ Username diubah dulu jadi email akun LMS lewat RPC LMS `get_email_by_username`
 ## Aturan yang berlaku
 
 - Absen **1× per hari**, dijaga `unique (user_id, tanggal)` di database.
-- Foto wajib; kamera depan, dikirim bersama koordinat.
+- Foto wajib; kamera depan diminta otomatis saat halaman dibuka (tanpa tombol nyalakan).
+  Kalau izin belum diberikan, muat ulang halaman untuk memunculkan permintaan izin lagi.
+- **Perbarui lokasi** mengambil ulang GPS bila titik terasa salah (mis. baru keluar gedung).
 - Jarak, jam, dan TOT dihitung **di server** (Edge Function), bukan di browser.
 - **TOT** = jam absen ≤ batas TOT (default `06:50` WIB). Di atasnya = **TL** (terlambat).
 - Hari kerja default **Senin–Sabtu**; hari libur dari admin jadi `L` dan tidak dihitung alpa.
@@ -83,13 +85,21 @@ Rekap → ⚙︎ Pengaturan absensi: titik sekolah (tombol "Gunakan lokasi saya 
 
 ## Rekap
 
-Grid guru × tanggal, kode `TOT / TL / H / S / I / A / L`, kolom total
-TOT/TL/H/S/I/A dan %Hadir (kolom total menempel di kanan). Klik sel → foto absen,
-jam, jarak, akurasi, dan ubah status + catatan. Ada **Export CSV** dan **Cetak** A4 landscape.
+Sel tabel berisi **jam absen** (hijau = tepat waktu, kuning = terlambat); `H` hadir
+dicatat admin, `S` sakit, `I` izin, `A` alpa, `L` libur. Kolom total TOT/TL/H/S/I/A dan
+%Hadir menempel di kanan. Klik sel → foto absen, jam, jarak, akurasi, dan ubah status +
+catatan. Ada **Export CSV** dan **Cetak** A4 landscape.
+
+## Ringkasan periode gaji (halaman guru)
+
+Di akun tiap guru ada kartu **Ringkasan periode gaji**: jumlah tepat waktu (TOT),
+terlambat, total masuk, sakit, izin, alpa, dan % kehadiran. Periodenya
+**tanggal 21 bulan lalu sampai tanggal 20 bulan ini** (mengikuti penggajian), jadi
+Desember dihitung dari 21 November sampai 20 Desember.
 
 Di HP (mayoritas pengguna) rekap otomatis berubah jadi **kartu per guru** berisi
-kalender mini: angka tanggal berwarna sesuai kode, ketuk tanggal untuk melihat foto
-atau mengubah status. Tabel penuh tetap dipakai di desktop dan saat mencetak.
+kalender mini: angka tanggal + jam absen, warna sesuai status, ketuk tanggal untuk
+melihat foto atau mengubah status. Tabel penuh tetap dipakai di desktop dan saat mencetak.
 
 ## Batasan
 

@@ -13,6 +13,7 @@ let profil = null;
 let pengaturan = null;
 let posisi = null;
 let stream = null;
+let pengamatLokasi = null;
 let absenHariIni = null;
 let modeDemo = new URLSearchParams(location.search).get('demo') === '1';
 
@@ -148,16 +149,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 function pasangEvent() {
   $('form-login').addEventListener('submit', masuk);
   $('tombol-keluar').addEventListener('click', keluar);
-
-  $('tombol-kamera').addEventListener('click', async () => {
-    try {
-      await aktifkanKamera();
-    } catch (e) {
-      toast('Kamera tidak bisa dibuka: ' + (e.message || 'izin ditolak'));
-    }
-  });
-
   $('tombol-absen').addEventListener('click', kirimAbsen);
+  $('tombol-lokasi').addEventListener('click', perbaruiLokasi);
   $('rekap-bulan').addEventListener('change', muatRekap);
   $('rekap-cari').addEventListener('input', gambarUlangTabel);
   $('rekap-csv').addEventListener('click', unduhCsv);
@@ -315,30 +308,51 @@ function tampilkanAbsen(boot) {
   $('info-tot').textContent = potongJam(pengaturan.batas_tot) + ' WIB';
   $('info-radius').textContent = pengaturan.radius_m + ' m';
 
-  if (boot.hariIni?.jam) tampilkanHasil(boot.hariIni);
-  else mulaiLokasi();
+  renderPeriode(boot.periode);
+
+  if (boot.hariIni?.jam) {
+    tampilkanHasil(boot.hariIni);
+  } else {
+    mulaiLokasi();
+    siapkanKamera();
+  }
 }
 
-function tampilkanHasil(rec) {
+function renderPeriode(data) {
+  if (!data?.periode) return;
+  $('kartu-periode').hidden = false;
+  $('periode-label').textContent = data.periode.label;
+  $('p-tot').textContent = data.total.tot;
+  $('p-terlambat').textContent = data.total.terlambat;
+  $('p-hadir').textContent = data.total.hadir;
+  $('p-sakit').textContent = data.total.sakit;
+  $('p-izin').textContent = data.total.izin;
+  $('p-alpa').textContent = data.total.alpa;
+  $('p-efektif').textContent = data.efektif;
+  $('periode-persen').textContent = data.persen + '%';
+  $('periode-persen').className = 'lencana ' + (data.persen >= 80 ? 'ok' : data.persen >= 50 ? 'peringatan' : 'bahaya');
+}
+
+function labelStatus(rec) {
+  if (!rec) return 'Belum absen';
+  if (rec.status !== 'hadir') {
+    return rec.status.charAt(0).toUpperCase() + rec.status.slice(1);
+  }
+  if (rec.dicatat_oleh) return 'Hadir (dicatat admin)';
+  return rec.tepat_waktu ? 'Tepat waktu' : 'Terlambat';
+}
+
+function tampilkanHasil(rec, baruDikirim = false) {
   hentikanKamera();
   $('kartu-kamera').hidden = true;
   $('hasil').hidden = false;
-  const tot = rec.tepat_waktu;
-  $('hasil-lencana').textContent = rec.status === 'hadir' ? (tot ? 'TOT · TEPAT WAKTU' : 'TL · TERLAMBAT')
-    : rec.status.toUpperCase();
-  $('hasil-lencana').className = 'lencana ' + (tot ? 'ok' : 'peringatan');
+  $('hasil-lencana').textContent = labelStatus(rec).toUpperCase();
+  $('hasil-lencana').className = 'lencana ' + (rec.tepat_waktu ? 'ok' : rec.status === 'hadir' ? 'peringatan' : 'bahaya');
   $('hasil-jam').textContent = potongJam(rec.jam);
   $('hasil-sub').textContent = rec.jarak_m != null ? Math.round(rec.jarak_m) + ' m dari titik sekolah' : '';
-  if (rec.foto_url) {
-    $('hasil-foto').src = rec.foto_url;
-    $('hasil-foto').hidden = false;
-  } else if (rec.foto_path) {
-    urlFoto(rec.foto_path).then(u => {
-      if (!u) return;
-      $('hasil-foto').src = u;
-      $('hasil-foto').hidden = false;
-    });
-  }
+  $('hasil-pesan').textContent = baruDikirim
+    ? 'Absen berhasil terkirim.'
+    : 'Absen hari ini sudah tercatat.';
   $('info-pesan').textContent = 'Absen hari ini sudah tercatat.';
   $('info-pesan').className = 'pesan info';
 }
@@ -348,7 +362,8 @@ function mulaiLokasi() {
     $('info-pesan').textContent = 'Perangkat ini tidak mendukung GPS.';
     return;
   }
-  navigator.geolocation.watchPosition(
+  if (pengamatLokasi != null) navigator.geolocation.clearWatch(pengamatLokasi);
+  pengamatLokasi = navigator.geolocation.watchPosition(
     (p) => {
       posisi = { lat: p.coords.latitude, lon: p.coords.longitude, akurasi: p.coords.accuracy };
       renderLokasi();
@@ -381,27 +396,75 @@ function renderLokasi() {
   $('tombol-absen').disabled = !dalam || !posisi;
 }
 
-async function aktifkanKamera() {
-  stream = await navigator.mediaDevices.getUserMedia({
-    video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 960 } },
-    audio: false
-  });
+async function siapkanKamera() {
+  const kotak = $('kamera-kosong');
+  const status = $('kamera-status');
+  if (!navigator.mediaDevices?.getUserMedia) {
+    status.textContent = 'Perangkat ini tidak mendukung kamera.';
+    return;
+  }
+
+  kotak.hidden = false;
+  kotak.textContent = 'Menunggu izin kamera…';
+  status.textContent = 'Menunggu izin kamera…';
+
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 960 } },
+      audio: false
+    });
+    const v = $('video');
+    v.srcObject = stream;
+    v.hidden = false;
+    kotak.hidden = true;
+    status.textContent = 'Kamera siap. Wajah Anda terlihat?';
+    $('tombol-absen').hidden = false;
+    $('tombol-absen').disabled = !posisi || !pengaturan ||
+      haversine(posisi.lat, posisi.lon, pengaturan.lat, pengaturan.lon) > pengaturan.radius_m;
+  } catch (err) {
+    // izin ditolak / kamera dipakai aplikasi lain
+    stream = null;
+    matikanVideo();
+    kotak.hidden = false;
+    kotak.innerHTML = 'Izin kamera belum aktif.<br>Muat ulang halaman untuk meminta izin lagi.';
+    status.textContent = 'Kamera tidak aktif.';
+    $('tombol-absen').hidden = true;
+  }
+}
+
+function matikanVideo() {
   const v = $('video');
-  v.srcObject = stream;
-  v.hidden = false;
-  $('kamera-kosong').hidden = true;
-  $('tombol-kamera').hidden = true;
-  $('tombol-absen').hidden = false;
-  $('tombol-absen').disabled = !posisi || !pengaturan ||
-    haversine(posisi.lat, posisi.lon, pengaturan.lat, pengaturan.lon) > pengaturan.radius_m;
+  v.hidden = true;
+  if (v.srcObject) { try { v.srcObject.getTracks().forEach(t => t.stop()); } catch (e) { /* sudah mati */ } v.srcObject = null; }
 }
 
 function hentikanKamera() {
   if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
-  $('video').hidden = true;
+  matikanVideo();
   $('kamera-kosong').hidden = false;
-  $('tombol-kamera').hidden = false;
   $('tombol-absen').hidden = true;
+}
+
+function perbaruiLokasi() {
+  posisi = null;
+  $('info-jarak').textContent = '—';
+  $('info-akurasi').textContent = '—';
+  $('info-pesan').textContent = 'Mencari lokasi terbaru…';
+  $('info-pesan').className = 'pesan info';
+  $('tombol-absen').disabled = true;
+
+  if (navigator.geolocation) navigator.geolocation.getCurrentPosition(
+    (p) => {
+      posisi = { lat: p.coords.latitude, lon: p.coords.longitude, akurasi: p.coords.accuracy };
+      renderLokasi();
+    },
+    (err) => {
+      $('info-pesan').textContent = 'Lokasi gagal diambil: ' + err.message;
+      $('info-pesan').className = 'pesan salah';
+    },
+    { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
+  );
+  mulaiLokasi();
 }
 
 async function kirimAbsen() {
@@ -437,10 +500,11 @@ async function kirimAbsen() {
 
     tampilkanHasil({
       tanggal: data.tanggal, jam: data.jam, status: 'hadir',
-      tepat_waktu: data.tepat_waktu, jarak_m: data.jarak, foto_url: data.foto_url
-    });
-    toast(data.tepat_waktu ? 'Absen tercatat — TOT (tepat waktu).' : 'Absen tercatat — terlambat.');
+      tepat_waktu: data.tepat_waktu, jarak_m: data.jarak
+    }, true);
+    toast('Absen berhasil terkirim.');
     await muatRiwayat();
+    try { renderPeriode(await api('rekap_saya')); } catch { /* ringkasan opsional */ }
   } catch (err) {
     toast(err.message);
     tombol.disabled = false;
@@ -462,12 +526,12 @@ async function muatRiwayat() {
     return;
   }
   tb.innerHTML = data.map(r => {
-    const kode = r.status === 'hadir' ? (r.tepat_waktu ? 'TOT' : 'TL') : r.status.toUpperCase();
+    const kode = labelStatus(r);
     const kls = r.status !== 'hadir' ? 'k-i' : (r.tepat_waktu ? 'k-tot' : 'k-tl');
     return `<tr>
       <td>${r.tanggal.split('-').reverse().join('/')}</td>
-      <td>${potongJam(r.jam)}</td>
-      <td><span class="k-${kls.replace('k-', '')}" style="padding:2px 8px;border-radius:6px">${kode}</span></td>
+      <td>${potongJam(r.jam) === '00:00' ? '—' : potongJam(r.jam)}</td>
+      <td><span class="k-${kls.replace('k-', '')}" style="padding:3px 9px;border-radius:999px;font-size:12px">${kode}</span></td>
       <td>${r.jarak_m != null ? Math.round(r.jarak_m) + ' m' : '—'}</td>
     </tr>`;
   }).join('');
@@ -517,6 +581,22 @@ function kodeSel(uid, tgl) {
   return { k: 'A', c: 'k-a' };
 }
 
+function selTampil(uid, tgl) {
+  const { k, c } = kodeSel(uid, tgl);
+  const rec = rekap.peta.get(uid + '|' + tgl);
+  const hari = `${HARI[isoDow(tgl) - 1]}, ${Number(tgl.slice(8))} ${bulanPanjang(tgl.slice(0, 7)).split(' ')[0]}`;
+
+  if (!k) return { teks: '', kelas: c, judul: `${hari}: belum absen` };
+  if (k === 'L') return { teks: 'L', kelas: c, judul: `${hari}: libur` };
+  if (k === 'TOT' || k === 'TL') {
+    const jam = potongJam(rec?.jam);
+    return { teks: jam || k, kelas: c, judul: `${hari}: ${labelStatus(rec)} pukul ${jam}` };
+  }
+  if (k === 'H') return { teks: 'H', kelas: c, judul: `${hari}: hadir dicatat admin` };
+  if (!rec) return { teks: k, kelas: c, judul: `${hari}: ${k === 'A' ? 'alpa (tidak ada absen)' : k}` };
+  return { teks: k, kelas: c, judul: `${hari}: ${labelStatus(rec)}` };
+}
+
 function hitungTotal(uid, jumlahHari) {
   const t = { tot: 0, tl: 0, h: 0, s: 0, i: 0, a: 0, efektif: 0 };
   for (let d = 1; d <= jumlahHari; d++) {
@@ -564,8 +644,8 @@ function gambarUlangTabel() {
     let tr = `<tr><td class="nama" title="${g.nama || ''}">${g.nama || '-'}</td>`;
     for (let d = 1; d <= jumlahHari; d++) {
       const tgl = `${rekap.bulan}-${String(d).padStart(2, '0')}`;
-      const { k, c } = kodeSel(g.id, tgl);
-      tr += `<td class="sel ${c}" data-uid="${g.id}" data-tgl="${tgl}">${k}</td>`;
+      const sel = selTampil(g.id, tgl);
+      tr += `<td class="sel ${sel.kelas}" data-uid="${g.id}" data-tgl="${tgl}" title="${sel.judul}">${sel.teks}</td>`;
     }
     const t = hitungTotal(g.id, jumlahHari);
     tr += `<td class="total">${t.tot}</td><td class="total">${t.tl}</td><td class="total">${t.h}</td><td class="total">${t.s}</td>`
@@ -610,16 +690,19 @@ function gambarKartuHp(jumlahHari, cari) {
     let kal = '<span class="hp-hari kosong"></span>'.repeat(offset);
     for (let d = 1; d <= jumlahHari; d++) {
       const tgl = `${rekap.bulan}-${String(d).padStart(2, '0')}`;
-      const { k, c } = kodeSel(g.id, tgl);
-      kal += `<button class="hp-hari ${c}" data-uid="${g.id}" data-tgl="${tgl}"
-        title="${HARI[isoDow(tgl) - 1]}, ${d}: ${k || 'belum absen'}">${d}</button>`;
+      const sel = selTampil(g.id, tgl);
+      const jam = sel.kelas === 'k-tot' || sel.kelas === 'k-tl' ? sel.teks : '';
+      kal += `<button class="hp-hari ${sel.kelas}" data-uid="${g.id}" data-tgl="${tgl}" title="${sel.judul}">
+        <span class="hp-tgl">${d}</span>${jam ? `<span class="hp-jam">${jam}</span>` : ''}
+      </button>`;
     }
 
     html += `<article class="hp-kartu">
       <div class="hp-kepala"><strong>${g.nama || '-'}</strong><span class="lencana ${kelas}">${t.persen}%</span></div>
       <div class="hp-total">
-        <span>TOT <b>${t.tot}</b></span><span>TL <b>${t.tl}</b></span><span>H <b>${t.h}</b></span>
-        <span>S <b>${t.s}</b></span><span>I <b>${t.i}</b></span><span>A <b>${t.a}</b></span>
+        <span>Tepat waktu <b>${t.tot}</b></span><span>Terlambat <b>${t.tl}</b></span>
+        <span>Masuk <b>${t.hadir}</b></span><span>Sakit <b>${t.s}</b></span>
+        <span>Izin <b>${t.i}</b></span><span>Alpa <b>${t.a}</b></span>
       </div>
       <div class="hp-kalender">${kal}</div>
     </article>`;

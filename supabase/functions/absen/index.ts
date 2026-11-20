@@ -91,6 +91,67 @@ async function ambilPengaturan() {
   return data;
 }
 
+// Periode penggajian: tanggal 21 bulan lalu s.d. tanggal 20 bulan ini.
+function periodeGaji(tanggal: string) {
+  const [y, m, d] = tanggal.split("-").map(Number);
+  const geser = (delta: number) => {
+    const dt = new Date(Date.UTC(y, m - 1 + delta, 1));
+    return { y: dt.getUTCFullYear(), m: dt.getUTCMonth() + 1 };
+  };
+  const awal = d >= 21 ? { y, m } : geser(-1);
+  const akhir = d >= 21 ? geser(1) : { y, m };
+  const p2 = (n: number) => String(n).padStart(2, "0");
+  const BULAN = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+  const tulis = (t: { y: number; m: number }, hari: number) =>
+    `${hari} ${BULAN[t.m - 1]} ${t.y}`;
+
+  return {
+    mulai: `${awal.y}-${p2(awal.m)}-21`,
+    selesai: `${akhir.y}-${p2(akhir.m)}-20`,
+    label: `${tulis(awal, 21)} – ${tulis(akhir, 20)}`
+  };
+}
+
+async function ringkasanPeriode(userId: string, pengaturan: { hari_kerja: number[] }) {
+  const { tanggal } = wib();
+  const periode = periodeGaji(tanggal);
+
+  const { data: rows } = await admin.from("absen_presensi")
+    .select("tanggal,status,tepat_waktu")
+    .eq("user_id", userId)
+    .gte("tanggal", periode.mulai).lte("tanggal", periode.selesai);
+
+  const total = { tot: 0, terlambat: 0, hadir: 0, sakit: 0, izin: 0, alpa: 0 };
+  for (const r of rows ?? []) {
+    if (r.status === "hadir") {
+      total.hadir++;
+      if (r.tepat_waktu) total.tot++; else total.terlambat++;
+    } else if (r.status === "sakit") total.sakit++;
+    else if (r.status === "izin") total.izin++;
+    else if (r.status === "alpa") total.alpa++;
+  }
+
+  // hari kerja efektif sampai hari ini, dikurangi hari libur
+  const { data: libur } = await admin.from("absen_libur")
+    .select("tanggal").gte("tanggal", periode.mulai).lte("tanggal", periode.selesai);
+  const setLibur = new Set((libur ?? []).map((l) => l.tanggal));
+
+  const batas = tanggal < periode.selesai ? tanggal : periode.selesai;
+  let efektif = 0;
+  const akhir = new Date(batas + "T00:00:00Z");
+  for (let d = new Date(periode.mulai + "T00:00:00Z"); d <= akhir; d.setUTCDate(d.getUTCDate() + 1)) {
+    const tgl = d.toISOString().slice(0, 10);
+    if (pengaturan.hari_kerja.includes(isoDow(tgl)) && !setLibur.has(tgl)) efektif++;
+  }
+
+  return {
+    periode,
+    total,
+    efektif,
+    persen: efektif ? Math.round((total.hadir / efektif) * 100) : 0
+  };
+}
+
 async function urlFoto(path: string) {
   const { data } = await admin.storage.from(BUCKET).createSignedUrl(path, 600);
   return data?.signedUrl ?? null;
@@ -138,7 +199,8 @@ Deno.serve(async (req) => {
         }
         return jawab({
           profil: { id: profil.id, nama: profil.nama, username: profil.username, role: profil.role },
-          guruSekolah, adminSekolah, pengaturan, tanggal, jam, hariIni
+          guruSekolah, adminSekolah, pengaturan, tanggal, jam, hariIni,
+          periode: guruSekolah ? await ringkasanPeriode(profil.id, pengaturan) : null
         });
       }
 
@@ -230,6 +292,12 @@ Deno.serve(async (req) => {
           .eq("user_id", profil.id).order("tanggal", { ascending: false }).limit(14);
         if (error) return galat("Gagal memuat riwayat: " + error.message, 500);
         return jawab({ riwayat: (data ?? []).map((r) => ({ ...r, jam: potongJam(r.jam) })) });
+      }
+
+      // ── ringkasan periode gaji milik sendiri ──────────────────────────────
+      case "rekap_saya": {
+        if (!guruSekolah) return galat("Hanya untuk guru.", 403, "AKSES");
+        return jawab(await ringkasanPeriode(profil.id, pengaturan));
       }
 
       // ── rekap bulanan (admin) ─────────────────────────────────────────────
