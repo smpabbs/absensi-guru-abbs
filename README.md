@@ -16,21 +16,21 @@ Tanpa build step — HTML + CSS + JS biasa, database Supabase project LMS, host 
 | `db/20261120_absensi_guru.sql` | tabel, RLS, fungsi validasi, bucket foto |
 | `BLUEPRINT.md` | latar belakang, data sekolah, keputusan desain |
 
-## Pratinjau tanpa login
+## Pratinjau
 
-Buka `index.html?demo=1` — rekap bulanan terisi data contoh (12 guru), tanpa menyentuh database.
-Berguna untuk rapat/demo. Tombol simpan & ubah status otomatis ditolak di mode ini.
+- **Demo (data contoh, tanpa login):** https://smpabbs.github.io/absensi-guru-abbs/?demo=1
+- **Aplikasi:** https://smpabbs.github.io/absensi-guru-abbs/
+
+Mode demo mengisi rekap bulanan dengan 12 guru contoh, tanpa menyentuh database.
+Tombol simpan & ubah status otomatis ditolak di mode ini.
 
 ## Hosting
 
-Repo: `github.com/smpabbs/absensi-guru-abbs` (privat).
+GitHub Pages dari branch `main` (root folder). Setiap `git push` ke `main` otomatis
+memperbarui situs dalam ±1 menit. Tidak ada build step.
 
-Deploy statis tidak butuh konfigurasi apa pun. Dua jalur yang tersedia:
-
-1. **GitHub Pages** — gratis & permanen, tetapi repo harus **publik** (plan akun sekarang belum mendukung Pages untuk repo privat).
-2. **Vercel** — `vercel deploy --prod`; akun tim `smpabbs-projects` sedang kena batas fair-use, jadi belum bisa deploy sekarang.
-
-Selama belum dipilih, pratinjau memakai tunnel Cloudflare sementara dari mesin pengembang.
+Catatan: repo harus publik supaya Pages aktif (plan akun belum mendukung Pages untuk repo privat).
+Isi repo hanya kode + publishable key Supabase, yang memang untuk browser.
 
 ## Pasang (sekali)
 
