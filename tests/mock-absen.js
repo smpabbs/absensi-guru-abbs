@@ -23,6 +23,8 @@ async (page) => {
   };
 
   const riwayat = {
+    periode: { mulai: '2026-10-21', selesai: '2026-11-20', label: '21 Okt 2026 - 20 Nov 2026' },
+    hariIni: '2026-11-20',
     riwayat: [
       { tanggal: '2026-11-19', jam: '06:41', status: 'hadir', tepat_waktu: true, jarak_m: 23 },
       { tanggal: '2026-11-18', jam: '07:03', status: 'hadir', tepat_waktu: false, jarak_m: 41 },

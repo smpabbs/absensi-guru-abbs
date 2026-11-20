@@ -62,7 +62,7 @@ LMS lebih dulu. Kata sandi tidak pernah disalin dan tidak bisa dibaca (hash bcry
 
 | Peran | Akun | Yang terlihat |
 |---|---|---|
-| Guru | username LMS (mis. `tri.wijayanti`) + kata sandi LMS | halaman absen, ringkasan periode gaji, riwayat 14 hari |
+| Guru | username LMS (mis. `tri.wijayanti`) + kata sandi LMS | halaman absen, ringkasan periode gaji, riwayat per periode |
 | Admin | `admin.abbs` + kata sandi LMS | rekap bulanan + pengaturan |
 
 Username diubah dulu jadi email akun LMS lewat RPC LMS `get_email_by_username`

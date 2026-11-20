@@ -16,6 +16,8 @@ let stream = null;
 let pengamatLokasi = null;
 let absenHariIni = null;
 let modeDemo = new URLSearchParams(location.search).get('demo') === '1';
+let riwayatPeriode = null;
+let periodeSekarang = null;
 
 const rekap = {
   bulan: '',
@@ -52,6 +54,27 @@ const bulanPanjang = (bulan) =>
 const bulanIniWIB = () => tanggalWIB().slice(0, 7);
 const isoDow = (str) => ((new Date(str + 'T00:00:00').getDay() + 6) % 7) + 1;
 const potongJam = (jam) => (jam || '').slice(0, 5);
+
+// geser tanggal 'YYYY-MM-21' sebanyak delta bulan (untuk melihat periode lalu)
+function geserBulan(tgl, delta) {
+  const [y, m] = tgl.split('-').map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + delta, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-21`;
+}
+
+// isi dropdown bulan rekap (18 bulan terakhir, terbaru di atas)
+function isiPilihanBulan() {
+  const sel = $('rekap-bulan');
+  if (sel.options.length) return;
+  const [ty, tm] = bulanIniWIB().split('-').map(Number);
+  let html = '';
+  for (let i = 0; i < 18; i++) {
+    const d = new Date(ty, tm - 1 - i, 1);
+    const nilai = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    html += `<option value="${nilai}">${bulanPanjang(nilai)}</option>`;
+  }
+  sel.innerHTML = html;
+}
 
 function haversine(lat1, lon1, lat2, lon2) {
   const R = 6371000, r = Math.PI / 180;
@@ -123,6 +146,8 @@ function mulaiDemo() {
   rekap.peta = peta;
 
   $('rekap-bulan').value = bulan;
+  isiPilihanBulan();
+  $('rekap-bulan').value = bulan;
   $('rekap-bulan-label').textContent = bulanPanjang(bulan) + ' · Mode demo';
   isiFormPengaturan();
   gambarUlangTabel();
@@ -152,6 +177,12 @@ function pasangEvent() {
   $('tombol-absen').addEventListener('click', kirimAbsen);
   $('tombol-lokasi').addEventListener('click', perbaruiLokasi);
   $('rekap-bulan').addEventListener('change', muatRekap);
+  $('riwayat-mundur').addEventListener('click', () => {
+    if (riwayatPeriode) muatRiwayat(geserBulan(riwayatPeriode.mulai, -1));
+  });
+  $('riwayat-maju').addEventListener('click', () => {
+    if (riwayatPeriode) muatRiwayat(geserBulan(riwayatPeriode.mulai, 1));
+  });
   $('rekap-cari').addEventListener('input', gambarUlangTabel);
   $('rekap-csv').addEventListener('click', unduhCsv);
   $('rekap-cetak').addEventListener('click', () => window.print());
@@ -276,9 +307,11 @@ async function sesudahLogin() {
   profil = boot.profil;
   pengaturan = boot.pengaturan;
   absenHariIni = boot.hariIni || null;
+  periodeSekarang = boot.periode?.periode?.mulai || null;
   $('siapa').textContent = profil.nama || profil.username || '';
 
   if (boot.adminSekolah) {
+    isiPilihanBulan();
     tampilkan('rekap');
     await muatRekap();
   } else if (boot.guruSekolah) {
@@ -514,20 +547,26 @@ async function kirimAbsen() {
   }
 }
 
-async function muatRiwayat() {
+async function muatRiwayat(mulai) {
   const tb = $('riwayat');
   let data;
   try {
-    ({ riwayat: data } = await api('riwayat'));
+    data = await api('riwayat', mulai ? { mulai } : {});
   } catch (err) {
     tb.innerHTML = `<tr><td colspan="4" style="color:var(--merah)">${err.message}</td></tr>`;
     return;
   }
-  if (!data?.length) {
-    tb.innerHTML = '<tr><td colspan="4" style="color:var(--teks-lembut)">Belum ada riwayat.</td></tr>';
+
+  riwayatPeriode = data.periode;
+  $('riwayat-periode').textContent = data.periode.label;
+  $('riwayat-maju').disabled = !periodeSekarang || data.periode.mulai >= periodeSekarang;
+  $('riwayat-mundur').disabled = false;
+
+  if (!data.riwayat?.length) {
+    tb.innerHTML = '<tr><td colspan="4" style="color:var(--ink-lembut)">Belum ada absensi pada periode ini.</td></tr>';
     return;
   }
-  tb.innerHTML = data.map(r => {
+  tb.innerHTML = data.riwayat.map(r => {
     const kode = labelStatus(r);
     const kls = r.status !== 'hadir' ? 'k-i' : (r.tepat_waktu ? 'k-tot' : 'k-tl');
     return `<tr>

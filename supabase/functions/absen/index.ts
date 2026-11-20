@@ -112,6 +112,20 @@ function periodeGaji(tanggal: string) {
   };
 }
 
+// Periode yang sama, tapi titik awalnya ditentukan (dipakai untuk melihat periode lalu).
+function periodeDariMulai(mulai: string) {
+  const [y, m] = mulai.split("-").map(Number);
+  const akhir = new Date(Date.UTC(y, m, 1)); // bulan berikutnya
+  const BULAN = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+  const p2 = (n: number) => String(n).padStart(2, "0");
+  const selesai = `${akhir.getUTCFullYear()}-${p2(akhir.getUTCMonth() + 1)}-20`;
+  return {
+    mulai,
+    selesai,
+    label: `21 ${BULAN[m - 1]} ${y} – 20 ${BULAN[akhir.getUTCMonth()]} ${akhir.getUTCFullYear()}`
+  };
+}
+
 async function ringkasanPeriode(userId: string, pengaturan: { hari_kerja: number[] }) {
   const { tanggal } = wib();
   const periode = periodeGaji(tanggal);
@@ -284,14 +298,27 @@ Deno.serve(async (req) => {
         });
       }
 
-      // ── riwayat guru ──────────────────────────────────────────────────────
+      // ── riwayat guru (per periode gaji 21 → 20) ───────────────────────────
       case "riwayat": {
         if (profil.role !== "guru") return galat("Hanya untuk guru.", 403, "AKSES");
+
+        const minta = String(body.mulai ?? "");
+        const periode = /^\d{4}-\d{2}-21$/.test(minta)
+          ? periodeDariMulai(minta)
+          : periodeGaji(tanggal);
+
         const { data, error } = await admin.from("absen_presensi")
           .select("tanggal,jam,status,tepat_waktu,jarak_m")
-          .eq("user_id", profil.id).order("tanggal", { ascending: false }).limit(14);
+          .eq("user_id", profil.id)
+          .gte("tanggal", periode.mulai).lte("tanggal", periode.selesai)
+          .order("tanggal", { ascending: false });
+
         if (error) return galat("Gagal memuat riwayat: " + error.message, 500);
-        return jawab({ riwayat: (data ?? []).map((r) => ({ ...r, jam: potongJam(r.jam) })) });
+        return jawab({
+          periode,
+          hariIni: tanggal,
+          riwayat: (data ?? []).map((r) => ({ ...r, jam: potongJam(r.jam) }))
+        });
       }
 
       // ── ringkasan periode gaji milik sendiri ──────────────────────────────
