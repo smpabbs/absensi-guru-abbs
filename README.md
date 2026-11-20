@@ -56,10 +56,17 @@ Isi repo hanya kode + publishable key Supabase, yang memang untuk browser.
 | Peran | Akun | Yang terlihat |
 |---|---|---|
 | Guru | username LMS (mis. `tri.wijayanti`) + kata sandi LMS | halaman absen + riwayat 14 hari |
-| Admin | `admin.abbs` (admin LMS SMP ABBS) | rekap bulanan + pengaturan |
+| Admin | `admin.abbs` + kata sandi LMS | rekap bulanan + pengaturan |
 
-Tidak ada akun atau kata sandi baru. Guru yang belum punya username di LMS tidak bisa login —
-urus di LMS dulu.
+Login memakai **akun LMS yang sama**, bukan akun baru:
+
+1. username diubah jadi email akun LMS (`username@examfilq.dev`) — memakai RPC LMS
+   `get_email_by_username` kalau tersedia, atau pola domain di `app.js` (`DOMAIN_LMS`);
+2. Supabase Auth LMS memverifikasi kata sandi.
+
+Kata sandi tidak pernah disalin ke aplikasi ini dan tidak bisa dibaca dari database
+(hash bcrypt satu arah). Jadi tidak ada data login yang perlu diimpor — cukup daftar guru
+yang memang sudah ada di LMS (48 guru SMP ABBS, semua punya username).
 
 ## Aturan yang berlaku
 

@@ -59,6 +59,14 @@ function haversine(lat1, lon1, lat2, lon2) {
   return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+// Pesan yang bisa ditindaklanjuti kalau tabel/fungsi belum dibuat di database.
+function pesanGalat(err, konteks) {
+  if (/does not exist|Could not find the table|schema cache|Could not find the function/i.test(err?.message || '')) {
+    return 'Database absensi belum disiapkan. Jalankan db/20261120_absensi_guru.sql di Supabase.';
+  }
+  return `${konteks}: ${err?.message || 'galat tidak dikenal'}`;
+}
+
 async function urlFoto(path) {
   if (!path) return null;
   const { data } = await db.storage.from('absensi-foto').createSignedUrl(path, 600);
@@ -163,6 +171,26 @@ function pasangEvent() {
 }
 
 // ── auth ────────────────────────────────────────────────────────────────────
+// Akun LMS memakai email sintetis username@examfilq.dev (bukan email asli),
+// jadi login cukup dari username. Password tidak pernah disalin ke aplikasi ini:
+// kata sandi yang dipakai adalah kata sandi LMS (hash-nya tidak bisa dibaca).
+const DOMAIN_LMS = 'examfilq.dev';
+
+async function cariEmail(username) {
+  if (username.includes('@')) return username;
+
+  // 1. fungsi aplikasi ini (guru + admin), ada setelah migration dijalankan
+  let { data, error } = await db.rpc('absensi_login_email', { p_username: username });
+  if (!error && data) return data;
+
+  // 2. fungsi bawaan LMS (hanya role guru) — sudah ada di produksi
+  ({ data, error } = await db.rpc('get_email_by_username', { p_username: username }));
+  if (!error && data) return data;
+
+  // 3. pola akun LMS; salah username akan ditolak saat signIn (pesan tetap umum)
+  return `${username}@${DOMAIN_LMS}`;
+}
+
 async function masuk(e) {
   e.preventDefault();
   const tombol = $('login-masuk');
@@ -175,8 +203,7 @@ async function masuk(e) {
   const password = $('login-password').value;
 
   try {
-    const { data: email, error } = await db.rpc('absensi_login_email', { p_username: username });
-    if (error) throw new Error('Koneksi ke server gagal. Hubungi admin (' + error.message + ')');
+    const email = await cariEmail(username);
     if (!email) throw new Error('Username atau kata sandi salah.');
 
     const { data, error: err } = await db.auth.signInWithPassword({ email, password });
@@ -237,7 +264,9 @@ async function muatAbsen() {
   $('absen-tanggal').textContent = tanggalPanjang(tgl) + ' · ' + jamWIB() + ' WIB';
 
   if (!pengaturan) {
-    $('info-pesan').textContent = 'Pengaturan absensi belum dibuat. Hubungi admin.';
+    $('kartu-kamera').hidden = true;
+    $('info-pesan').textContent = 'Database absensi belum disiapkan. Jalankan db/20261120_absensi_guru.sql di Supabase.';
+    $('info-pesan').className = 'pesan salah';
     return;
   }
   $('info-tot').textContent = potongJam(pengaturan.batas_tot) + ' WIB';
@@ -396,7 +425,11 @@ async function muatRiwayat() {
     .limit(14);
 
   const tb = $('riwayat');
-  if (error || !data?.length) {
+  if (error) {
+    tb.innerHTML = `<tr><td colspan="4" style="color:var(--merah)">${pesanGalat(error, 'Gagal memuat riwayat')}</td></tr>`;
+    return;
+  }
+  if (!data?.length) {
     tb.innerHTML = '<tr><td colspan="4" style="color:var(--teks-lembut)">Belum ada riwayat.</td></tr>';
     return;
   }
@@ -439,7 +472,7 @@ async function muatRekap() {
     db.from('absensi_libur').select('tanggal,keterangan').gte('tanggal', awal).lte('tanggal', akhir)
   ]);
 
-  if (guruRes.error) { toast('Gagal memuat data guru: ' + guruRes.error.message); return; }
+  if (guruRes.error) { toast(pesanGalat(guruRes.error, 'Gagal memuat data guru')); return; }
 
   rekap.guru = guruRes.data || [];
   rekap.peta = new Map((absenRes.data || []).map(r => [r.user_id + '|' + r.tanggal, r]));
