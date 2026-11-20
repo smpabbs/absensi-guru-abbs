@@ -587,3 +587,11 @@ details.pengaturan[open] > summary { color: var(--mint); }
   .sukses-ikon { width: 66px; height: 66px; margin-bottom: 16px; }
   .sukses-ikon svg { width: 30px; height: 30px; }
 }
+
+/* fokus keyboard tetap terlihat */
+.tombol:focus-visible,
+.hp-hari:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--mint);
+  outline-offset: 2px;
+}
