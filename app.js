@@ -166,6 +166,15 @@ function pasangEvent() {
   $('set-simpan').addEventListener('click', simpanPengaturan);
   $('set-lokasi-saya').addEventListener('click', () => ambilLokasiSekali($('set-lat'), $('set-lon'), $('set-info')));
   $('libur-tambah').addEventListener('click', tambahLibur);
+
+  // tabel (desktop) dan kartu (HP) digambar ulang saat layar berubah lebar
+  let tunda;
+  window.addEventListener('resize', () => {
+    clearTimeout(tunda);
+    tunda = setTimeout(() => {
+      if (!$('view-rekap').hidden && rekap.guru.length) gambarUlangTabel();
+    }, 200);
+  });
 }
 
 // ── auth ────────────────────────────────────────────────────────────────────
@@ -579,6 +588,47 @@ function gambarUlangTabel() {
     <div class="chip">TOT hari ini <b>${ringkas.tot}</b></div>
     <div class="chip">Terlambat hari ini <b>${ringkas.tl}</b></div>
     <div class="chip">Total TOT bulan ini <b>${rekap.guru.reduce((n, g) => n + hitungTotal(g.id, jumlahHari).tot, 0)}</b></div>`;
+
+  gambarKartuHp(jumlahHari, cari);
+}
+
+// Versi HP: satu kartu per guru berisi kalender mini (tabel terlalu lebar di layar kecil)
+function gambarKartuHp(jumlahHari, cari) {
+  const box = $('rekap-hp');
+  if (!box) return;
+  if (!window.matchMedia('(max-width: 760px)').matches) { box.innerHTML = ''; return; }
+
+  let html = '';
+  const offset = isoDow(`${rekap.bulan}-01`) - 1;
+
+  for (const g of rekap.guru) {
+    if (cari && !(g.nama || '').toLowerCase().includes(cari)) continue;
+
+    const t = hitungTotal(g.id, jumlahHari);
+    const kelas = t.persen >= 80 ? 'ok' : t.persen >= 50 ? 'peringatan' : 'bahaya';
+
+    let kal = '<span class="hp-hari kosong"></span>'.repeat(offset);
+    for (let d = 1; d <= jumlahHari; d++) {
+      const tgl = `${rekap.bulan}-${String(d).padStart(2, '0')}`;
+      const { k, c } = kodeSel(g.id, tgl);
+      kal += `<button class="hp-hari ${c}" data-uid="${g.id}" data-tgl="${tgl}"
+        title="${HARI[isoDow(tgl) - 1]}, ${d}: ${k || 'belum absen'}">${d}</button>`;
+    }
+
+    html += `<article class="hp-kartu">
+      <div class="hp-kepala"><strong>${g.nama || '-'}</strong><span class="lencana ${kelas}">${t.persen}%</span></div>
+      <div class="hp-total">
+        <span>TOT <b>${t.tot}</b></span><span>TL <b>${t.tl}</b></span><span>H <b>${t.h}</b></span>
+        <span>S <b>${t.s}</b></span><span>I <b>${t.i}</b></span><span>A <b>${t.a}</b></span>
+      </div>
+      <div class="hp-kalender">${kal}</div>
+    </article>`;
+  }
+
+  box.innerHTML = html || '<p style="color:var(--teks-lembut);font-size:13px">Tidak ada guru yang cocok.</p>';
+  box.querySelectorAll('button[data-uid]').forEach(b => {
+    b.addEventListener('click', () => bukaModal(b.dataset.uid, b.dataset.tgl));
+  });
 }
 
 // ── modal sel ───────────────────────────────────────────────────────────────
