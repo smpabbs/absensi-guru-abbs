@@ -310,6 +310,10 @@ function tampilkanAbsen(boot) {
 
   renderPeriode(boot.periode);
 
+  $('kartu-kamera').hidden = false;
+  $('kartu-status').hidden = false;
+  $('kartu-sukses').hidden = true;
+
   if (boot.hariIni?.jam) {
     tampilkanHasil(boot.hariIni);
   } else {
@@ -345,16 +349,14 @@ function labelStatus(rec) {
 function tampilkanHasil(rec, baruDikirim = false) {
   hentikanKamera();
   $('kartu-kamera').hidden = true;
-  $('hasil').hidden = false;
-  $('hasil-lencana').textContent = labelStatus(rec).toUpperCase();
-  $('hasil-lencana').className = 'lencana ' + (rec.tepat_waktu ? 'ok' : rec.status === 'hadir' ? 'peringatan' : 'bahaya');
-  $('hasil-jam').textContent = potongJam(rec.jam);
-  $('hasil-sub').textContent = rec.jarak_m != null ? Math.round(rec.jarak_m) + ' m dari titik sekolah' : '';
-  $('hasil-pesan').textContent = baruDikirim
-    ? 'Absen berhasil terkirim.'
-    : 'Absen hari ini sudah tercatat.';
-  $('info-pesan').textContent = 'Absen hari ini sudah tercatat.';
-  $('info-pesan').className = 'pesan info';
+  $('kartu-status').hidden = true;
+  $('kartu-sukses').hidden = false;
+
+  const status = labelStatus(rec);
+  $('sukses-jam').textContent = potongJam(rec.jam) === '00:00' ? '—' : potongJam(rec.jam);
+  $('sukses-status').textContent = status;
+  $('sukses-status').className = rec.tepat_waktu ? 'ok' : rec.status === 'hadir' ? 'peringatan' : 'bahaya';
+  $('kartu-sukses').classList.toggle('baru', baruDikirim);
 }
 
 function mulaiLokasi() {

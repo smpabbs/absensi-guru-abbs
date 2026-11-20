@@ -26,7 +26,7 @@
 html, body { margin: 0; padding: 0; }
 
 body {
-  font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-family: "Fira Sans", "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
   color: var(--ink);
   background-color: var(--bg);
   background-image:
@@ -187,7 +187,7 @@ input[type=month]::-webkit-calendar-picker-indicator { filter: invert(1) opacity
 .login-kaki { text-align: center; font-size: 12px; color: var(--ink-lembut); margin-top: 18px; }
 
 /* ── absen ──────────────────────────────────────────────────────────────── */
-.absen-grid { display: grid; grid-template-columns: 1.05fr 1fr; gap: 16px; }
+.absen-grid { display: grid; grid-template-columns: 1.05fr 1fr; gap: 16px; align-items: start; }
 
 .kamera {
   position: relative;
@@ -216,7 +216,7 @@ input[type=month]::-webkit-calendar-picker-indicator { filter: invert(1) opacity
 
 .status-baris { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 0; font-size: 13px; color: var(--ink-lembut); }
 .status-baris + .status-baris { border-top: 1px solid var(--garis); }
-.status-baris .nilai { font-variant-numeric: tabular-nums; font-weight: 650; color: var(--ink); font-size: 14px; }
+.status-baris .nilai { font-family: "Fira Code", ui-monospace, monospace; font-variant-numeric: tabular-nums; font-weight: 600; color: var(--ink); font-size: 13.5px; letter-spacing: -.02em; }
 
 .lencana {
   display: inline-flex; align-items: center; gap: 6px;
@@ -227,16 +227,6 @@ input[type=month]::-webkit-calendar-picker-indicator { filter: invert(1) opacity
 .lencana.ok { background: rgba(52, 211, 153, .14); border-color: rgba(52, 211, 153, .3); color: #6ee7b7; }
 .lencana.peringatan { background: rgba(251, 191, 36, .13); border-color: rgba(251, 191, 36, .28); color: #fcd34d; }
 .lencana.bahaya { background: rgba(248, 113, 113, .13); border-color: rgba(248, 113, 113, .3); color: #fca5a5; }
-
-.hasil-sukses { text-align: center; padding: 6px 0 2px; }
-.hasil-sukses .jam {
-  font-size: 52px; font-weight: 700; letter-spacing: -.04em;
-  font-variant-numeric: tabular-nums; line-height: 1.05; margin: 10px 0 4px;
-  background: linear-gradient(135deg, #ffffff, #6ee7b7 70%, #22d3ee);
-  -webkit-background-clip: text; background-clip: text; color: transparent;
-}
-.hasil-sukses .sub { color: var(--ink-lembut); font-size: 13px; }
-.hasil-pesan { margin-top: 14px; font-size: 13px; font-weight: 650; color: var(--mint); }
 
 .riwayat { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 .riwayat th {
@@ -249,7 +239,7 @@ input[type=month]::-webkit-calendar-picker-indicator { filter: invert(1) opacity
 .riwayat tr:last-child td { border-bottom: none; }
 
 /* periode gaji */
-.periode-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
+.periode-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-top: 14px; }
 .periode-grid > div {
   background: rgba(255, 255, 255, .045);
   border: 1px solid var(--garis);
@@ -308,7 +298,8 @@ table.rekap thead th.nama { z-index: 4; background: #0c1614; }
 table.rekap td.nama { font-size: 12px; font-weight: 500; color: var(--ink); }
 table.rekap td.sel {
   width: 46px; height: 33px;
-  font-size: 10.5px; font-variant-numeric: tabular-nums; font-weight: 700;
+  font-family: "Fira Code", ui-monospace, monospace;
+  font-size: 10px; font-variant-numeric: tabular-nums; font-weight: 600;
   cursor: pointer;
   transition: filter .12s;
 }
@@ -491,8 +482,7 @@ details.pengaturan[open] > summary { color: var(--mint); }
   .form-grid { grid-template-columns: 1fr; }
   .hari label { padding: 9px 11px; }
 
-  .hasil-sukses .jam { font-size: 46px; }
-  .periode-grid { gap: 6px; }
+  .periode-grid { grid-template-columns: repeat(3, 1fr); gap: 6px; }
   .periode-grid > div { padding: 10px 11px; border-radius: 12px; }
   .periode-grid b { font-size: 22px; }
   .hp-hari { height: 44px; }
@@ -537,4 +527,63 @@ details.pengaturan[open] > summary { color: var(--mint); }
   .k-l   { background: #f3f5f4 !important; }
   .k-tot, .k-tl, .k-s, .k-i, .k-a, .k-l { color: #000 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   #demo-banner { display: none !important; }
+}
+
+/* -- kartu "sudah absen" -------------------------------------------------- */
+.kartu-sukses {
+  text-align: center;
+  padding: 34px 22px 30px;
+  animation: naik .45s cubic-bezier(.2, .7, .3, 1) both;
+}
+.sukses-ikon {
+  width: 74px; height: 74px; margin: 0 auto 18px;
+  border-radius: 50%;
+  display: grid; place-items: center;
+  color: #06231d;
+  background: linear-gradient(140deg, var(--mint), var(--cyan));
+  box-shadow: 0 0 0 8px rgba(52, 211, 153, .08), 0 18px 44px -14px rgba(52, 211, 153, .6);
+}
+.sukses-ikon svg { width: 34px; height: 34px; }
+.sukses-eyebrow {
+  font-size: 10.5px; letter-spacing: .18em; text-transform: uppercase;
+  color: var(--ink-lembut); font-weight: 600;
+}
+.sukses-judul {
+  font-size: clamp(32px, 7vw, 46px); letter-spacing: -.05em; line-height: 1.05;
+  margin: 6px 0 10px; font-weight: 700;
+  background: linear-gradient(120deg, #ffffff, #6ee7b7 60%, #22d3ee);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.sukses-teks { font-size: 14px; color: var(--ink-lembut); }
+.sukses-meta {
+  display: inline-flex; align-items: center; gap: 10px;
+  margin-top: 16px; padding: 8px 16px;
+  border-radius: 999px; border: 1px solid var(--garis);
+  background: rgba(255, 255, 255, .045);
+  font-family: "Fira Code", ui-monospace, monospace;
+  font-size: 13px; letter-spacing: -.01em;
+}
+.sukses-meta .titik { width: 4px; height: 4px; border-radius: 50%; background: var(--ink-lembut); opacity: .6; }
+.sukses-meta #sukses-status.ok { color: #6ee7b7; }
+.sukses-meta #sukses-status.peringatan { color: #fcd34d; }
+.sukses-meta #sukses-status.bahaya { color: #fca5a5; }
+.kartu-sukses.baru .sukses-ikon { animation: denyut .7s ease-out 1; }
+@keyframes denyut {
+  0% { box-shadow: 0 0 0 0 rgba(52, 211, 153, .45), 0 18px 44px -14px rgba(52, 211, 153, .6); }
+  100% { box-shadow: 0 0 0 18px rgba(52, 211, 153, 0), 0 18px 44px -14px rgba(52, 211, 153, .6); }
+}
+
+/* -- perataan ------------------------------------------------------------- */
+.periode-grid > div { text-align: center; }
+.periode-grid b { display: block; }
+.periode-grid span { display: block; margin-top: 2px; }
+
+@media (max-width: 760px) {
+  #view-absen .judul-halaman {
+    flex-direction: column; align-items: center; text-align: center; gap: 3px;
+  }
+  .ringkas { justify-content: center; }
+  .kartu-sukses { padding: 30px 16px 26px; border-radius: 20px; }
+  .sukses-ikon { width: 66px; height: 66px; margin-bottom: 16px; }
+  .sukses-ikon svg { width: 30px; height: 30px; }
 }
