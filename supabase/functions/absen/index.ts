@@ -548,7 +548,7 @@ Deno.serve(async (req) => {
 
         const guru = await daftarGuru(token, pengaturan.sekolah_id);
         const { data: rows, error } = await admin.from("absen_presensi")
-          .select("user_id,tanggal,jam,status,tepat_waktu,terlambat,jarak_m,akurasi_m,foto_path,foto_dihapus,arsip_drive_id,catatan,dicatat_oleh")
+          .select("user_id,tanggal,jam,status,tepat_waktu,terlambat,jarak_m,akurasi_m,foto_path,foto_dihapus,arsip_drive_id,catatan,dicatat_oleh,diubah_at")
           .eq("sekolah_id", pengaturan.sekolah_id)
           .gte("tanggal", awal).lte("tanggal", akhir);
         if (error) return galat("Gagal memuat rekap: " + error.message, 500);
@@ -566,8 +566,12 @@ Deno.serve(async (req) => {
         const tgl = String(body.tanggal ?? "");
         const status = String(body.status ?? "");
         const catatan = body.catatan ? String(body.catatan) : null;
+        const jamInput = String(body.jam ?? "").trim();
         if (!/^[0-9a-f-]{36}$/i.test(uid) || !/^\d{4}-\d{2}-\d{2}$/.test(tgl)) {
           return galat("Data tidak lengkap.", 200, "DATA");
+        }
+        if (jamInput && !/^\d{2}:\d{2}$/.test(jamInput)) {
+          return galat("Jam tidak valid (HH:MM).", 200, "DATA");
         }
 
         if (body.hapus) {
@@ -590,9 +594,24 @@ Deno.serve(async (req) => {
           tanggal: tgl,
           status,
           catatan,
-          dicatat_oleh: ada?.foto_path ? (ada.dicatat_oleh ?? null) : profil.id
+          dicatat_oleh: ada?.foto_path ? (ada.dicatat_oleh ?? null) : profil.id,
+          diubah_oleh: profil.id,
+          diubah_at: new Date().toISOString()
         };
-        if (!ada) { baris.jam = "00:00:00"; baris.tepat_waktu = false; baris.terlambat = false; }
+
+        if (!ada) {
+          baris.jam = jamInput ? `${jamInput}:00` : "00:00:00";
+          baris.tepat_waktu = false;
+          baris.terlambat = false;
+        }
+
+        // admin mengoreksi jam kehadiran: status & warna mengikuti jam baru
+        if (jamInput) {
+          baris.jam = `${jamInput}:00`;
+          baris.tepat_waktu = jamInput <= potongJam(pengaturan.batas_tot);
+          baris.terlambat = jamInput > potongJam(pengaturan.batas_masuk);
+          if (status !== "hadir") baris.tepat_waktu = false;
+        }
 
         const { error } = await admin.from("absen_presensi").upsert(baris, { onConflict: "user_id,tanggal" });
         if (error) return galat("Gagal menyimpan status: " + error.message, 500);

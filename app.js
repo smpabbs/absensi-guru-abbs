@@ -816,12 +816,19 @@ function bukaModal(uid, tgl) {
       <div class="status-baris"><span>Jarak</span><span class="nilai">${rec.jarak_m != null ? Math.round(rec.jarak_m) + ' m' : '—'}</span></div>
       <div class="status-baris"><span>Akurasi</span><span class="nilai">${rec.akurasi_m != null ? '±' + Math.round(rec.akurasi_m) + ' m' : '—'}</span></div>` : '<p style="font-size:14px;color:var(--teks-lembut)">Belum ada data absensi pada tanggal ini.</p>'}
 
+    ${rec?.diubah_at ? `<p style="font-size:11.5px;color:var(--ink-lembut);margin-top:8px">Terakhir diubah admin.</p>` : ''}
+
     <div class="bidang" style="margin-top:14px">
+      <label for="modal-jam">Jam kehadiran (bisa dikoreksi admin)</label>
+      <input type="time" id="modal-jam" value="${jamTeks === '—' ? '' : jamTeks}">
+    </div>
+    <div class="bidang">
       <label for="modal-catatan">Catatan (opsional)</label>
       <input type="text" id="modal-catatan" value="${(rec?.catatan || '').replace(/"/g, '&quot;')}" placeholder="mis. surat dokter">
     </div>
     <div class="aksi">
-      <button class="tombol kecil" data-set="hadir">Hadir</button>
+      <button class="tombol kecil" data-set="jam">Simpan jam</button>
+      <button class="tombol putih kecil" data-set="hadir">Hadir</button>
       <button class="tombol putih kecil" data-set="izin">Izin</button>
       <button class="tombol putih kecil" data-set="sakit">Sakit</button>
       <button class="tombol putih kecil" data-set="alpa">Alpa</button>
@@ -862,19 +869,24 @@ async function setStatus(aksi) {
   if (modeDemo) return toast('Mode demo: perubahan tidak disimpan.');
   if (!modalAktif) return;
   const catatan = $('modal-catatan')?.value || null;
+  const jam = $('modal-jam')?.value || '';
+
+  if (aksi === 'jam' && !jam) return toast('Isi jam kehadiran dulu.');
+
   try {
     await api('set_status', {
       user_id: modalAktif.uid,
       tanggal: modalAktif.tgl,
-      status: aksi === 'hapus' ? 'alpa' : aksi,
+      status: aksi === 'hapus' || aksi === 'jam' ? 'hadir' : aksi,
       catatan,
+      jam: aksi === 'jam' ? jam : undefined,
       hapus: aksi === 'hapus'
     });
   } catch (err) {
     return toast(err.message);
   }
   tutupModal();
-  toast('Status diperbarui.');
+  toast(aksi === 'jam' ? 'Jam kehadiran diperbarui.' : 'Status diperbarui.');
   await muatRekap();
 }
 
