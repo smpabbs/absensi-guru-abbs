@@ -54,6 +54,8 @@ async (page) => {
         guruSekolah: false, adminSekolah: true, pengaturan,
         tanggal: '2026-11-19', jam: '07:10:00', hariIni: null
       };
+    } else if (isi.action === 'arsip_final') {
+      jawab = { ok: true, periode: { label: '21 Okt 2026 - 20 Nov 2026' }, terarsip: 2, dihapus: 2 };
     } else if (isi.action === 'bersihkan_foto') {
       jawab = { ok: true, dihapus: 0, batas: '2026-09-22', simpan_foto_hari: 60 };
     } else if (isi.action === 'rekap') {
