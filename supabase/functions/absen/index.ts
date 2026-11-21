@@ -178,22 +178,35 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return galat("Gunakan POST.", 405);
 
-  const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
-  if (!token) return galat("Sesi habis, silakan login ulang.", 401, "UNAUTH");
+  const body = await req.json().catch(() => ({} as Record<string, unknown>));
+  const aksi = String(body.action ?? "");
+  const { tanggal, jam } = wib();
 
-  const profil = await profilDariToken(token);
-  if (!profil || profil.status !== "aktif") return galat("Akun tidak aktif di LMS.", 401, "UNAUTH");
+  // Pemanggilan terjadwal (cron) untuk membersihkan foto lama — tanpa akun pengguna.
+  const rahasiaCron = Deno.env.get("CRON_SECRET") ?? "";
+  const cronOk = aksi === "bersihkan_foto" && !!rahasiaCron &&
+    req.headers.get("x-cron-secret") === rahasiaCron;
+
+  const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+
+  let profil: any = null;
+  let adminSekolah = false;
+  let guruSekolah = false;
+
+  if (!cronOk) {
+    if (!token) return galat("Sesi habis, silakan login ulang.", 401, "UNAUTH");
+    profil = await profilDariToken(token);
+    if (!profil || profil.status !== "aktif") return galat("Akun tidak aktif di LMS.", 401, "UNAUTH");
+  }
 
   const pengaturan = await ambilPengaturan();
   if (!pengaturan) return galat("Pengaturan absensi belum dibuat di database.", 500, "KONFIG");
 
-  const adminSekolah = profil.role === "admin" &&
-    (profil.sekolah_id === pengaturan.sekolah_id || profil.sekolah_id === null);
-  const guruSekolah = profil.role === "guru" && profil.sekolah_id === pengaturan.sekolah_id;
-
-  const body = await req.json().catch(() => ({} as Record<string, unknown>));
-  const aksi = String(body.action ?? "");
-  const { tanggal, jam } = wib();
+  if (!cronOk && profil) {
+    adminSekolah = profil.role === "admin" &&
+      (profil.sekolah_id === pengaturan.sekolah_id || profil.sekolah_id === null);
+    guruSekolah = profil.role === "guru" && profil.sekolah_id === pengaturan.sekolah_id;
+  }
 
   try {
     switch (aksi) {
@@ -397,7 +410,7 @@ Deno.serve(async (req) => {
 
         const guru = await daftarGuru(token, pengaturan.sekolah_id);
         const { data: rows, error } = await admin.from("absen_presensi")
-          .select("user_id,tanggal,jam,status,tepat_waktu,terlambat,jarak_m,akurasi_m,foto_path,catatan,dicatat_oleh")
+          .select("user_id,tanggal,jam,status,tepat_waktu,terlambat,jarak_m,akurasi_m,foto_path,foto_dihapus,catatan,dicatat_oleh")
           .eq("sekolah_id", pengaturan.sekolah_id)
           .gte("tanggal", awal).lte("tanggal", akhir);
         if (error) return galat("Gagal memuat rekap: " + error.message, 500);
@@ -455,6 +468,7 @@ Deno.serve(async (req) => {
         const lat = Number(body.lat), lon = Number(body.lon);
         const batas = String(body.batas_tot ?? "");
         const masuk = String(body.batas_masuk ?? "");
+        const simpanFoto = Number(body.simpan_foto_hari ?? pengaturan.simpan_foto_hari ?? 60);
         const hari = Array.isArray(body.hari_kerja) ? body.hari_kerja.map(Number) : [];
 
         if (!Number.isFinite(lat) || !Number.isFinite(lon)) return galat("Koordinat tidak valid.", 200, "DATA");
@@ -464,13 +478,50 @@ Deno.serve(async (req) => {
         }
         if (masuk <= batas) return galat("Jam masuk harus setelah batas TOT.", 200, "DATA");
         if (!hari.length || hari.some((h) => !(h >= 1 && h <= 7))) return galat("Hari kerja tidak valid.", 200, "DATA");
+        if (!(simpanFoto >= 0 && simpanFoto <= 3650)) return galat("Batas simpan foto 0-3650 hari.", 200, "DATA");
 
         const { error } = await admin.from("absen_pengaturan").update({
           lat, lon, radius_m: Math.round(radius), batas_tot: batas, batas_masuk: masuk,
+          simpan_foto_hari: Math.round(simpanFoto),
           hari_kerja: hari, updated_at: new Date().toISOString()
         }).eq("id", true);
         if (error) return galat("Gagal menyimpan pengaturan: " + error.message, 500);
         return jawab({ ok: true });
+      }
+
+      // ── bersihkan foto lama (admin atau cron) ──────────────────────────────
+      case "bersihkan_foto": {
+        if (!cronOk && !adminSekolah) return galat("Hanya admin sekolah.", 403, "AKSES");
+
+        const hari = Number(body.hari ?? pengaturan.simpan_foto_hari ?? 60);
+        if (!(hari >= 1 && hari <= 3650)) return galat("Batas simpan foto 1-3650 hari.", 200, "DATA");
+
+        const potong = new Date(Date.now() - hari * 86400000);
+        const batasTgl = new Intl.DateTimeFormat("en-CA", {
+          timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit"
+        }).format(potong);
+
+        let total = 0;
+        for (let putaran = 0; putaran < 25; putaran++) {
+          const { data: rows, error } = await admin.from("absen_presensi")
+            .select("id,foto_path")
+            .not("foto_path", "is", null)
+            .lt("tanggal", batasTgl)
+            .limit(200);
+          if (error) return galat("Gagal membaca data: " + error.message, 500);
+          if (!rows?.length) break;
+
+          const paths = rows.map((r) => r.foto_path).filter(Boolean) as string[];
+          if (paths.length) await admin.storage.from(BUCKET).remove(paths);
+          await admin.from("absen_presensi")
+            .update({ foto_path: null, foto_dihapus: true })
+            .in("id", rows.map((r) => r.id));
+
+          total += rows.length;
+          if (rows.length < 200) break;
+        }
+
+        return jawab({ ok: true, dihapus: total, batas: batasTgl, simpan_foto_hari: hari });
       }
 
       // ── hari libur (admin) ────────────────────────────────────────────────

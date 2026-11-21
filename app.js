@@ -189,6 +189,7 @@ function pasangEvent() {
   $('rekap-cetak').addEventListener('click', () => window.print());
   $('tirai').addEventListener('click', (e) => { if (e.target.id === 'tirai') tutupModal(); });
   $('set-simpan').addEventListener('click', simpanPengaturan);
+  $('set-bersihkan').addEventListener('click', bersihkanFoto);
   $('rekap-pengaturan').addEventListener('click', bukaPengaturan);
   $('pengaturan-tutup').addEventListener('click', tutupPengaturan);
   $('tirai-pengaturan').addEventListener('click', (e) => { if (e.target.id === 'tirai-pengaturan') tutupPengaturan(); });
@@ -519,12 +520,7 @@ async function kirimAbsen() {
   try {
     const v = $('video'), c = $('canvas');
     if (!v.videoWidth) throw new Error('Kamera belum siap. Tunggu sebentar.');
-    // perkecil ke lebar 1024 supaya kiriman ringan
-    const skala = Math.min(1, 1024 / v.videoWidth);
-    c.width = Math.round(v.videoWidth * skala);
-    c.height = Math.round(v.videoHeight * skala);
-    c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
-    const foto = c.toDataURL('image/jpeg', 0.72);
+    const foto = fotoKompres(v, c);
 
     const data = await api('absen', {
       lat: posisi.lat, lon: posisi.lon, akurasi: posisi.akurasi, foto
@@ -807,7 +803,7 @@ function bukaModal(uid, tgl) {
   $('modal').innerHTML = `
     <h2>${guru?.nama || '-'}</h2>
     <div class="meta">${tanggalPanjang(tgl)} · ${kode || 'belum absen'}</div>
-    ${rec?.foto_path ? '<div id="modal-foto" style="color:var(--teks-lembut);font-size:13px">memuat foto…</div>' : ''}
+    ${(rec?.foto_path || rec?.foto_dihapus) ? '<div id="modal-foto" style="color:var(--ink-lembut);font-size:12.5px">memuat foto…</div>' : ''}
     ${rec ? `<div class="status-baris"><span>Jam</span><span class="nilai">${jamTeks}</span></div>
       <div class="status-baris"><span>Status</span><span class="nilai">${statusTeks}</span></div>
       <div class="status-baris"><span>Jarak</span><span class="nilai">${rec.jarak_m != null ? Math.round(rec.jarak_m) + ' m' : '—'}</span></div>
@@ -832,11 +828,19 @@ function bukaModal(uid, tgl) {
     b.addEventListener('click', () => setStatus(b.dataset.set));
   });
 
+  if (rec?.foto_dihapus && !rec.foto_path) {
+    const box = $('modal-foto');
+    if (box) {
+      box.outerHTML =
+        '<p style="font-size:12.5px;color:var(--ink-lembut)">Foto sudah dibersihkan otomatis (melewati batas simpan). Data absen tetap tersimpan.</p>';
+    }
+  }
+
   if (rec?.foto_path) {
     urlFoto(rec.foto_path).then(u => {
       const box = $('modal-foto');
       if (!box) return;
-      box.outerHTML = u ? `<img src="${u}" alt="Foto absen">` : '<p style="font-size:13px;color:var(--teks-lembut)">Foto tidak tersedia.</p>';
+      box.outerHTML = u ? `<img src="${u}" alt="Foto absen">` : '<p style="font-size:12.5px;color:var(--ink-lembut)">Foto tidak tersedia.</p>';
     });
   }
 }
@@ -875,6 +879,7 @@ function isiFormPengaturan() {
   $('set-radius').value = pengaturan.radius_m;
   $('set-tot').value = potongJam(pengaturan.batas_tot);
   $('set-masuk').value = potongJam(pengaturan.batas_masuk || '07:00:00');
+  $('set-simpan').value = pengaturan.simpan_foto_hari ?? 60;
 
   const box = $('set-hari');
   if (!box.dataset.siap) {
@@ -898,6 +903,7 @@ async function simpanPengaturan() {
     radius_m: Math.round(Number($('set-radius').value)),
     batas_tot: $('set-tot').value,
     batas_masuk: $('set-masuk').value,
+    simpan_foto_hari: Number($('set-simpan').value),
     hari_kerja: hari
   };
   if (!Number.isFinite(isi.lat) || !Number.isFinite(isi.lon)) return toast('Koordinat tidak valid.');
@@ -1068,4 +1074,40 @@ function bukaPengaturan() {
 
 function tutupPengaturan() {
   $('tirai-pengaturan').hidden = true;
+}
+
+// Kompres foto: sisi terpanjang 760 px, kualitas turun sampai �90 KB.
+function fotoKompres(video, canvas) {
+  const sisi = Math.max(video.videoWidth, video.videoHeight) || 760;
+  const skala = Math.min(1, 760 / sisi);
+  canvas.width = Math.round(video.videoWidth * skala);
+  canvas.height = Math.round(video.videoHeight * skala);
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  let kualitas = 0.6;
+  let data = canvas.toDataURL('image/jpeg', kualitas);
+  while (data.length > 120000 && kualitas > 0.32) {
+    kualitas -= 0.08;
+    data = canvas.toDataURL('image/jpeg', kualitas);
+  }
+  return data;
+}
+
+async function bersihkanFoto() {
+  if (modeDemo) return toast('Mode demo: tidak ada foto untuk dibersihkan.');
+  const hari = Number($('set-simpan').value);
+  if (!(hari >= 1 && hari <= 3650)) return toast('Isi batas simpan foto (1-3650 hari).');
+  if (!confirm(`Hapus foto absen yang lebih tua dari ${hari} hari? Data absennya tetap tersimpan.`)) return;
+
+  $('set-bersihkan-info').textContent = 'Membersihkan�';
+  try {
+    const hasil = await api('bersihkan_foto', { hari });
+    $('set-bersihkan-info').textContent =
+      `${hasil.dihapus} foto dihapus (lebih tua dari ${hasil.batas}).`;
+    toast(hasil.dihapus ? `${hasil.dihapus} foto dibersihkan.` : 'Tidak ada foto lama.');
+  } catch (err) {
+    $('set-bersihkan-info').textContent = '';
+    toast(err.message);
+  }
 }

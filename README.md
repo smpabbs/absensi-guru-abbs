@@ -126,3 +126,35 @@ melihat foto atau mengubah status. Tabel penuh tetap dipakai di desktop dan saat
 - Logika rekap: buka `index.html?uji=1` → Console harus **15/15 lulus**.
 - Pratinjau UI tanpa database: `tests/mock-ui.js`, `tests/mock-absen.js`.
 - Uji dengan sesi LMS asli: `tests/uji-sesi.js` (butuh `.uji-sesi.json` sementara, jangan di-commit).
+
+## Penyimpanan (Supabase terbatas)
+
+Yang benar-benar memakan ruang adalah **foto**, bukan data absen:
+
+| Data | Ukuran |
+|---|---|
+| Baris absen (jam, status, jarak) | Â± 1.200 baris/bulan, beberapa MB/tahun |
+| Foto absen | Â± 40â€“90 KB/foto setelah kompresi (sisi 760 px, kualitas â‰¤ 0,6) |
+| 48 guru Ã— 25 hari Ã— 60 KB | Â± 72 MB/bulan |
+
+Karena itu dipakai tiga lapis pengaman:
+
+1. **Kompresi di HP** â€” foto diperkecil ke 760 px dan kualitas diturunkan sampai Â± 90 KB sebelum dikirim.
+2. **Retensi otomatis** â€” foto lebih tua dari `simpan_foto_hari` (default **60 hari**) dihapus;
+   baris absennya tetap ada dan ditandai "foto sudah dibersihkan". Bisa diubah admin (0 = simpan selamanya).
+3. **Pembersihan terjadwal** â€” `.github/workflows/bersihkan-foto.yml` memanggil Edge Function
+   setiap hari 02:30 WIB memakai header `x-cron-secret` (secret `ABSEN_CRON_SECRET` di repo,
+   `CRON_SECRET` di Supabase). Admin juga bisa menjalankan manual dari panel Pengaturan.
+
+Hitungan dengan 60 hari: 48 Ã— 25 Ã— 60 Ã— Â±60 KB â‰ˆ **430 MB** (stabil, tidak terus naik), jadi
+database 500 MB tetap lega untuk tabel dan project lain.
+
+### Kenapa tidak diarsipkan ke GitHub?
+
+- Repo yang dipakai GitHub Pages harus **publik** â†’ wajah guru bisa diakses siapa saja.
+- Git menyimpan riwayat file selamanya: menghapus foto tidak mengecilkan repo, malah tumbuh dua kali.
+- Batas praktis repo Â± 1 GB dan push ribuan file biner per bulan akan lambat dan berisiko.
+
+Kalau suatu saat butuh arsip foto permanen, jalur yang benar adalah penyimpanan terpisah
+(Cloudflare R2: 10 GB gratis tanpa biaya egress, atau Google Drive sekolah), bukan GitHub Pages.
+Data rekap (CSV) tetap bisa diunduh lewat tombol **Export CSV** kapan saja.

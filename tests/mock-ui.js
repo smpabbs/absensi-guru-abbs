@@ -54,6 +54,8 @@ async (page) => {
         guruSekolah: false, adminSekolah: true, pengaturan,
         tanggal: '2026-11-19', jam: '07:10:00', hariIni: null
       };
+    } else if (isi.action === 'bersihkan_foto') {
+      jawab = { ok: true, dihapus: 0, batas: '2026-09-22', simpan_foto_hari: 60 };
     } else if (isi.action === 'rekap') {
       jawab = { guru, rows: rows.filter(r => r.tanggal.startsWith(isi.bulan || '2026-11')),
         libur: [{ tanggal: (isi.bulan || '2026-11') + '-05', keterangan: 'Libur contoh' }], pengaturan };
