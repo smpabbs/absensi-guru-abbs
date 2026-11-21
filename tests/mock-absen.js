@@ -8,7 +8,7 @@ async (page) => {
 
   const pengaturan = {
     id: true, sekolah_id: SEK, lat: -7.539134, lon: 110.805751,
-    radius_m: 50, batas_tot: '06:50:00', hari_kerja: [1, 2, 3, 4, 5, 6]
+    radius_m: 50, batas_tot: '06:50:00', batas_masuk: '07:00:00', hari_kerja: [1, 2, 3, 4, 5, 6]
   };
 
   const boot = {

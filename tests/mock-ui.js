@@ -33,7 +33,7 @@ async (page) => {
       }
       const telat = (d + gi) % 5 === 0;
       rows.push({ user_id: g.id, tanggal: tgl, jam: telat ? '07:12' : '06:39', status: 'hadir',
-        tepat_waktu: !telat, jarak_m: 18 + (d * gi) % 40, akurasi_m: 8 + d % 12,
+        tepat_waktu: !telat, terlambat: telat, jarak_m: 18 + (d * gi) % 40, akurasi_m: 8 + d % 12,
         foto_path: null, catatan: null, dicatat_oleh: null });
     }
   });

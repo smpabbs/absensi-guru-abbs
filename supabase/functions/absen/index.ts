@@ -131,15 +131,17 @@ async function ringkasanPeriode(userId: string, pengaturan: { hari_kerja: number
   const periode = periodeGaji(tanggal);
 
   const { data: rows } = await admin.from("absen_presensi")
-    .select("tanggal,status,tepat_waktu")
+    .select("tanggal,status,tepat_waktu,terlambat")
     .eq("user_id", userId)
     .gte("tanggal", periode.mulai).lte("tanggal", periode.selesai);
 
-  const total = { tot: 0, terlambat: 0, hadir: 0, sakit: 0, izin: 0, alpa: 0 };
+  const total = { tot: 0, terlambat: 0, normal: 0, hadir: 0, sakit: 0, izin: 0, alpa: 0 };
   for (const r of rows ?? []) {
     if (r.status === "hadir") {
       total.hadir++;
-      if (r.tepat_waktu) total.tot++; else total.terlambat++;
+      if (r.tepat_waktu) total.tot++;
+      else if (r.terlambat) total.terlambat++;
+      else total.normal++;
     } else if (r.status === "sakit") total.sakit++;
     else if (r.status === "izin") total.izin++;
     else if (r.status === "alpa") total.alpa++;
@@ -201,7 +203,7 @@ Deno.serve(async (req) => {
         let hariIni = null;
         if (guruSekolah) {
           const { data } = await admin.from("absen_presensi")
-            .select("tanggal,jam,status,tepat_waktu,jarak_m,foto_path")
+            .select("tanggal,jam,status,tepat_waktu,terlambat,jarak_m,foto_path")
             .eq("user_id", profil.id).eq("tanggal", tanggal).maybeSingle();
           if (data) {
             hariIni = {
@@ -244,12 +246,12 @@ Deno.serve(async (req) => {
         }
 
         const { data: sudah } = await admin.from("absen_presensi")
-          .select("jam,tepat_waktu,jarak_m,foto_path")
+          .select("jam,tepat_waktu,terlambat,jarak_m,foto_path")
           .eq("user_id", profil.id).eq("tanggal", tanggal).maybeSingle();
         if (sudah) {
           return jawab({
             ok: false, code: "SUDAH",
-            jam: potongJam(sudah.jam), tepat_waktu: sudah.tepat_waktu,
+            jam: potongJam(sudah.jam), tepat_waktu: sudah.tepat_waktu, terlambat: sudah.terlambat,
             jarak: sudah.jarak_m ? Math.round(sudah.jarak_m) : null,
             foto_path: sudah.foto_path,
             message: `Anda sudah absen hari ini pukul ${potongJam(sudah.jam)}.`
@@ -269,7 +271,8 @@ Deno.serve(async (req) => {
           if (eh) fotoPath = null;
         }
 
-        const tepatWaktu = jam <= pengaturan.batas_tot.replace(/^(\d):/, "0$1:");
+        const tepatWaktu = jam <= pengaturan.batas_tot;
+        const terlambat = jam > pengaturan.batas_masuk;
         const baris = {
           user_id: profil.id,
           sekolah_id: pengaturan.sekolah_id,
@@ -278,6 +281,7 @@ Deno.serve(async (req) => {
           jam,
           status: "hadir",
           tepat_waktu: tepatWaktu,
+          terlambat,
           lat, lon,
           akurasi_m: Number.isFinite(akurasi) ? akurasi : null,
           jarak_m: jarak,
@@ -291,9 +295,9 @@ Deno.serve(async (req) => {
         }
 
         return jawab({
-          ok: true, tanggal, jam: potongJam(jam), tepat_waktu: tepatWaktu,
-          batas_tot: potongJam(pengaturan.batas_tot), jarak: Math.round(jarak),
-          radius_m: pengaturan.radius_m, nama: profil.nama,
+          ok: true, tanggal, jam: potongJam(jam), tepat_waktu: tepatWaktu, terlambat,
+          batas_tot: potongJam(pengaturan.batas_tot), batas_masuk: potongJam(pengaturan.batas_masuk),
+          jarak: Math.round(jarak), radius_m: pengaturan.radius_m, nama: profil.nama,
           foto_url: fotoPath ? await urlFoto(fotoPath) : null
         });
       }
@@ -308,7 +312,7 @@ Deno.serve(async (req) => {
           : periodeGaji(tanggal);
 
         const { data, error } = await admin.from("absen_presensi")
-          .select("tanggal,jam,status,tepat_waktu,jarak_m")
+          .select("tanggal,jam,status,tepat_waktu,terlambat,jarak_m")
           .eq("user_id", profil.id)
           .gte("tanggal", periode.mulai).lte("tanggal", periode.selesai)
           .order("tanggal", { ascending: false });
@@ -340,7 +344,7 @@ Deno.serve(async (req) => {
 
         const guru = await daftarGuru(token, pengaturan.sekolah_id);
         const { data: rows, error } = await admin.from("absen_presensi")
-          .select("user_id,tanggal,jam,status,tepat_waktu,jarak_m,akurasi_m,foto_path,catatan,dicatat_oleh")
+          .select("user_id,tanggal,jam,status,tepat_waktu,terlambat,jarak_m,akurasi_m,foto_path,catatan,dicatat_oleh")
           .eq("sekolah_id", pengaturan.sekolah_id)
           .gte("tanggal", awal).lte("tanggal", akhir);
         if (error) return galat("Gagal memuat rekap: " + error.message, 500);
@@ -384,7 +388,7 @@ Deno.serve(async (req) => {
           catatan,
           dicatat_oleh: ada?.foto_path ? (ada.dicatat_oleh ?? null) : profil.id
         };
-        if (!ada) { baris.jam = "00:00:00"; baris.tepat_waktu = false; }
+        if (!ada) { baris.jam = "00:00:00"; baris.tepat_waktu = false; baris.terlambat = false; }
 
         const { error } = await admin.from("absen_presensi").upsert(baris, { onConflict: "user_id,tanggal" });
         if (error) return galat("Gagal menyimpan status: " + error.message, 500);
@@ -397,15 +401,19 @@ Deno.serve(async (req) => {
         const radius = Number(body.radius_m);
         const lat = Number(body.lat), lon = Number(body.lon);
         const batas = String(body.batas_tot ?? "");
+        const masuk = String(body.batas_masuk ?? "");
         const hari = Array.isArray(body.hari_kerja) ? body.hari_kerja.map(Number) : [];
 
         if (!Number.isFinite(lat) || !Number.isFinite(lon)) return galat("Koordinat tidak valid.", 200, "DATA");
         if (!(radius >= 10 && radius <= 5000)) return galat("Radius harus 10-5000 meter.", 200, "DATA");
-        if (!/^\d{2}:\d{2}$/.test(batas)) return galat("Jam batas TOT tidak valid.", 200, "DATA");
+        if (!/^\d{2}:\d{2}$/.test(batas) || !/^\d{2}:\d{2}$/.test(masuk)) {
+          return galat("Jam TOT / jam masuk tidak valid.", 200, "DATA");
+        }
+        if (masuk <= batas) return galat("Jam masuk harus setelah batas TOT.", 200, "DATA");
         if (!hari.length || hari.some((h) => !(h >= 1 && h <= 7))) return galat("Hari kerja tidak valid.", 200, "DATA");
 
         const { error } = await admin.from("absen_pengaturan").update({
-          lat, lon, radius_m: Math.round(radius), batas_tot: batas,
+          lat, lon, radius_m: Math.round(radius), batas_tot: batas, batas_masuk: masuk,
           hari_kerja: hari, updated_at: new Date().toISOString()
         }).eq("id", true);
         if (error) return galat("Gagal menyimpan pengaturan: " + error.message, 500);

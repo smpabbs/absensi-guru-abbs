@@ -73,21 +73,23 @@ Username diubah dulu jadi email akun LMS lewat RPC LMS `get_email_by_username`
 - Absen **1× per hari**, dijaga `unique (user_id, tanggal)` di database.
 - Foto wajib; kamera depan diminta otomatis saat halaman dibuka (tanpa tombol nyalakan).
   Kalau izin belum diberikan, muat ulang halaman untuk memunculkan permintaan izin lagi.
-- **Perbarui lokasi** mengambil ulang GPS bila titik terasa salah (mis. baru keluar gedung).
-- Jarak, jam, dan TOT dihitung **di server** (Edge Function), bukan di browser.
-- **TOT** = jam absen ≤ batas TOT (default `06:50` WIB). Di atasnya = **TL** (terlambat).
+- Tombol **Perbaiki lokasi** mengambil ulang GPS bila titik terasa salah (mis. baru keluar gedung),
+  tombol **Kirim Absen** mengirim foto + koordinat sekaligus.
+- Jarak, jam, dan status dihitung **di server** (Edge Function), bukan di browser.
+- **Tiga status masuk**: **Tepat waktu (TOT)** jika absen ≤ `06:50`; **Hadir** jika antara
+  `06:51`–`07:00`; **Terlambat** jika lewat `07:00`. Jam masuk dan batas TOT bisa diubah admin.
 - Hari kerja default **Senin–Sabtu**; hari libur dari admin jadi `L` dan tidak dihitung alpa.
 - Hari kerja lewat tanpa absen = **A**; hari ini yang belum absen = kosong.
-- Admin mencatat hadir manual → kode **H** (hadir tanpa TOT), supaya tidak salah jadi TL.
+- Admin mencatat hadir manual → kode **H** (hadir tanpa TOT), supaya tidak salah jadi terlambat.
 
 ## Yang bisa diubah admin (tanpa deploy)
 
-Rekap → ⚙︎ Pengaturan absensi: titik sekolah (tombol "Gunakan lokasi saya sekarang"),
-**radius** (10–5000 m, default 50 m), jam batas TOT, hari kerja, dan hari libur.
+Rekap → tombol **Pengaturan**: titik sekolah (tombol "Gunakan lokasi saya"),
+**radius** (10–5000 m, default 50 m), **jam masuk**, **batas TOT**, hari kerja, dan hari libur.
 
 ## Rekap
 
-Sel tabel berisi **jam absen** (hijau = tepat waktu, kuning = terlambat); `H` hadir
+Sel tabel berisi **jam absen** (hijau = tepat waktu, abu = hadir, kuning = terlambat); `H` hadir
 dicatat admin, `S` sakit, `I` izin, `A` alpa, `L` libur. Kolom total TOT/TL/H/S/I/A dan
 %Hadir menempel di kanan. Klik sel → foto absen, jam, jarak, akurasi, dan ubah status +
 catatan. Ada **Export CSV** dan **Cetak** A4 landscape.

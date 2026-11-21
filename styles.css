@@ -616,3 +616,35 @@ select option { background: #0a1311; color: var(--ink); }
   width: 38px; min-width: 38px; padding: 0; font-size: 17px; line-height: 1;
 }
 .nav-periode .tombol:disabled { opacity: .28; }
+
+/* -- tombol penting & panel pengaturan ------------------------------------ */
+.tombol svg { flex: none; }
+.tombol-ikon { gap: 7px; }
+
+#tombol-absen {
+  box-shadow: 0 18px 44px -16px rgba(52, 211, 153, .8), inset 0 1px 0 rgba(255, 255, 255, .3);
+  letter-spacing: -.01em;
+}
+#tombol-absen:not(:disabled) { animation: ajak 2.8s ease-in-out infinite; }
+@keyframes ajak {
+  0%, 100% { box-shadow: 0 18px 44px -16px rgba(52, 211, 153, .75), inset 0 1px 0 rgba(255, 255, 255, .3); }
+  50% { box-shadow: 0 22px 60px -14px rgba(52, 211, 153, 1), inset 0 1px 0 rgba(255, 255, 255, .42); }
+}
+
+.modal-lebar { max-width: 620px; }
+.modal-lebar .meta { margin-bottom: 18px; }
+.modal-lebar .aksi { justify-content: flex-end; }
+
+.sukses-meta #sukses-status.netral { color: #7dd3fc; }
+
+@media (max-width: 760px) {
+  .modal-lebar { max-width: none; }
+  .modal-lebar .form-grid { grid-template-columns: 1fr 1fr; }
+  .modal-lebar .aksi { display: flex; justify-content: stretch; }
+  .modal-lebar .aksi .tombol { flex: 1; }
+  #tombol-absen { position: sticky; bottom: 10px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #tombol-absen:not(:disabled) { animation: none; }
+}

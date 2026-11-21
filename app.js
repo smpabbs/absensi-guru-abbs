@@ -24,6 +24,7 @@ const rekap = {
   guru: [],
   peta: new Map(),
   libur: new Set(),
+  liburDaftar: [],
   hariKerja: new Set([1, 2, 3, 4, 5, 6]),
   hariIni: ''
 };
@@ -188,6 +189,9 @@ function pasangEvent() {
   $('rekap-cetak').addEventListener('click', () => window.print());
   $('tirai').addEventListener('click', (e) => { if (e.target.id === 'tirai') tutupModal(); });
   $('set-simpan').addEventListener('click', simpanPengaturan);
+  $('rekap-pengaturan').addEventListener('click', bukaPengaturan);
+  $('pengaturan-tutup').addEventListener('click', tutupPengaturan);
+  $('tirai-pengaturan').addEventListener('click', (e) => { if (e.target.id === 'tirai-pengaturan') tutupPengaturan(); });
   $('set-lokasi-saya').addEventListener('click', () => ambilLokasiSekali($('set-lat'), $('set-lon'), $('set-info')));
   $('libur-tambah').addEventListener('click', tambahLibur);
 
@@ -339,6 +343,7 @@ function tampilkanAbsen(boot) {
     return;
   }
   $('info-tot').textContent = potongJam(pengaturan.batas_tot) + ' WIB';
+  $('info-masuk').textContent = potongJam(pengaturan.batas_masuk || '07:00:00') + ' WIB';
   $('info-radius').textContent = pengaturan.radius_m + ' m';
 
   renderPeriode(boot.periode);
@@ -376,7 +381,9 @@ function labelStatus(rec) {
     return rec.status.charAt(0).toUpperCase() + rec.status.slice(1);
   }
   if (rec.dicatat_oleh) return 'Hadir (dicatat admin)';
-  return rec.tepat_waktu ? 'Tepat waktu' : 'Terlambat';
+  if (rec.tepat_waktu) return 'Tepat waktu (TOT)';
+  if (rec.terlambat) return 'Terlambat';
+  return 'Hadir';
 }
 
 function tampilkanHasil(rec, baruDikirim = false) {
@@ -388,7 +395,8 @@ function tampilkanHasil(rec, baruDikirim = false) {
   const status = labelStatus(rec);
   $('sukses-jam').textContent = potongJam(rec.jam) === '00:00' ? '—' : potongJam(rec.jam);
   $('sukses-status').textContent = status;
-  $('sukses-status').className = rec.tepat_waktu ? 'ok' : rec.status === 'hadir' ? 'peringatan' : 'bahaya';
+  const kelas = rec.status !== 'hadir' ? 'bahaya' : rec.tepat_waktu ? 'ok' : rec.terlambat ? 'peringatan' : 'netral';
+  $('sukses-status').className = kelas;
   $('kartu-sukses').classList.toggle('baru', baruDikirim);
 }
 
@@ -600,7 +608,8 @@ async function muatRekap() {
   rekap.hariKerja = new Set(pengaturan?.hari_kerja || [1, 2, 3, 4, 5, 6]);
   rekap.guru = data.guru || [];
   rekap.peta = new Map((data.rows || []).map(r => [r.user_id + '|' + r.tanggal, r]));
-  rekap.libur = new Set((data.libur || []).map(r => r.tanggal));
+  rekap.liburDaftar = data.libur || [];
+  rekap.libur = new Set(rekap.liburDaftar.map(r => r.tanggal));
 
   if (pengaturan) isiFormPengaturan();
   gambarUlangTabel();
@@ -613,8 +622,9 @@ function kodeSel(uid, tgl) {
   const rec = rekap.peta.get(uid + '|' + tgl);
   if (rec) {
     if (rec.status === 'hadir') {
-      if (rec.dicatat_oleh) return { k: 'H', c: 'k-h' };   // hadir dicatat admin, bukan TOT
-      return rec.tepat_waktu ? { k: 'TOT', c: 'k-tot' } : { k: 'TL', c: 'k-tl' };
+      if (rec.tepat_waktu) return { k: 'TOT', c: 'k-tot' };      // <= batas TOT
+      if (rec.terlambat) return { k: 'TL', c: 'k-tl' };          // > jam masuk
+      return { k: 'H', c: 'k-h' };                               // masuk biasa / dicatat admin
     }
     return { k: rec.status === 'sakit' ? 'S' : rec.status === 'izin' ? 'I' : 'A', c: 'k-' + (rec.status === 'sakit' ? 's' : rec.status === 'izin' ? 'i' : 'a') };
   }
@@ -629,11 +639,13 @@ function selTampil(uid, tgl) {
 
   if (!k) return { teks: '', kelas: c, judul: `${hari}: belum absen` };
   if (k === 'L') return { teks: 'L', kelas: c, judul: `${hari}: libur` };
-  if (k === 'TOT' || k === 'TL') {
-    const jam = potongJam(rec?.jam);
-    return { teks: jam || k, kelas: c, judul: `${hari}: ${labelStatus(rec)} pukul ${jam}` };
+
+  // hadir: tampilkan jam absennya, warna mengikuti status
+  if (rec && rec.status === 'hadir' && !rec.dicatat_oleh) {
+    const jam = potongJam(rec.jam);
+    return { teks: jam || 'H', kelas: c, judul: `${hari}: ${labelStatus(rec)} pukul ${jam}` };
   }
-  if (k === 'H') return { teks: 'H', kelas: c, judul: `${hari}: hadir dicatat admin` };
+  if (k === 'H') return { teks: 'H', kelas: c, judul: `${hari}: ${labelStatus(rec)}` };
   if (!rec) return { teks: k, kelas: c, judul: `${hari}: ${k === 'A' ? 'alpa (tidak ada absen)' : k}` };
   return { teks: k, kelas: c, judul: `${hari}: ${labelStatus(rec)}` };
 }
@@ -763,10 +775,7 @@ function bukaModal(uid, tgl) {
   const rec = rekap.peta.get(uid + '|' + tgl);
   const kode = kodeSel(uid, tgl).k;
   const jamTeks = potongJam(rec?.jam) === '00:00' ? '—' : potongJam(rec?.jam);
-  const statusTeks = !rec ? ''
-    : rec.status !== 'hadir' ? rec.status
-    : rec.dicatat_oleh ? 'Hadir (dicatat admin)'
-    : rec.tepat_waktu ? 'Tepat waktu (TOT)' : 'Terlambat';
+  const statusTeks = !rec ? '' : labelStatus(rec);
   modalAktif = { uid, tgl };
 
   $('modal').innerHTML = `
@@ -839,6 +848,7 @@ function isiFormPengaturan() {
   $('set-lon').value = pengaturan.lon;
   $('set-radius').value = pengaturan.radius_m;
   $('set-tot').value = potongJam(pengaturan.batas_tot);
+  $('set-masuk').value = potongJam(pengaturan.batas_masuk || '07:00:00');
 
   const box = $('set-hari');
   if (!box.dataset.siap) {
@@ -861,10 +871,13 @@ async function simpanPengaturan() {
     lon: Number($('set-lon').value),
     radius_m: Math.round(Number($('set-radius').value)),
     batas_tot: $('set-tot').value,
+    batas_masuk: $('set-masuk').value,
     hari_kerja: hari
   };
   if (!Number.isFinite(isi.lat) || !Number.isFinite(isi.lon)) return toast('Koordinat tidak valid.');
   if (!(isi.radius_m >= 10 && isi.radius_m <= 5000)) return toast('Radius harus 10–5000 meter.');
+  if (!isi.batas_masuk) return toast('Jam masuk belum diisi.');
+  if (isi.batas_masuk <= isi.batas_tot) return toast('Jam masuk harus setelah batas TOT.');
 
   try {
     await api('simpan_pengaturan', isi);
@@ -1017,4 +1030,16 @@ function ujiLogika() {
   hasil.forEach(h => console[h.lulus ? 'log' : 'error']((h.lulus ? 'OK   ' : 'GAGAL') + ' ' + h.nama, h.lulus ? '' : h));
   console.log(`self-check: ${hasil.length - gagal.length}/${hasil.length} lulus`);
   return gagal.length === 0;
+}
+
+// -- panel pengaturan (admin) ------------------------------------------------
+function bukaPengaturan() {
+  if (!profil || profil.role !== 'admin') return;
+  isiFormPengaturan();
+  gambarLibur(rekap.liburDaftar || []);
+  $('tirai-pengaturan').hidden = false;
+}
+
+function tutupPengaturan() {
+  $('tirai-pengaturan').hidden = true;
 }
