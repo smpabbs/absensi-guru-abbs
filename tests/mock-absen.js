@@ -16,21 +16,55 @@ async (page) => {
     guruSekolah: true, adminSekolah: false, pengaturan,
     tanggal: '2026-11-20', jam: '06:38:12', hariIni: null,
     periode: {
-      periode: { mulai: '2026-11-21', selesai: '2026-12-20', label: '21 Nov 2026 - 20 Des 2026' },
-      total: { tot: 12, terlambat: 3, hadir: 15, sakit: 1, izin: 2, alpa: 0 },
-      efektif: 20, persen: 75
+      periode: { mulai: '2026-10-21', selesai: '2026-11-20', label: '21 Okt 2026 - 20 Nov 2026' },
+      total: { tot: 12, terlambat: 3, normal: 2, hadir: 17, sakit: 1, izin: 2, alpa: 0 },
+      efektif: 27, persen: 78
     }
   };
+
+  // daftar semua hari dalam periode 21 Okt - 20 Nov 2026
+  const hari = [];
+  const selesai = new Date('2026-11-20T00:00:00Z');
+  let urut = 0;
+  for (let d = new Date('2026-10-21T00:00:00Z'); d <= selesai; d.setUTCDate(d.getUTCDate() + 1)) {
+    const tgl = d.toISOString().slice(0, 10);
+    const dow = d.getUTCDay();
+    urut++;
+    if (dow === 0) { hari.push({ tanggal: tgl, status: 'libur', jam: null }); continue; }
+    if (urut % 9 === 0) { hari.push({ tanggal: tgl, status: 'belum', jam: null }); continue; }
+    if (urut % 7 === 0) { hari.push({ tanggal: tgl, status: 'izin', jam: null, catatan: 'acara keluarga' }); continue; }
+    if (urut % 11 === 0) { hari.push({ tanggal: tgl, status: 'sakit', jam: null }); continue; }
+    const telat = urut % 5 === 0;
+    const normal = !telat && urut % 4 === 0;
+    hari.push({
+      tanggal: tgl, status: 'hadir',
+      jam: telat ? '07:12' : normal ? '06:55' : '06:41',
+      tepat_waktu: !telat && !normal, terlambat: telat,
+      jarak_m: 18 + (urut % 20)
+    });
+  }
+
+  const ringkasan = { masuk: 0, tot: 0, hadir: 0, terlambat: 0, izin: 0, sakit: 0, alpa: 0, belum: 0, efektif: 0 };
+  for (const h of hari) {
+    const kerja = h.status !== 'libur';
+    if (kerja) ringkasan.efektif++;
+    if (h.status === 'hadir') {
+      ringkasan.masuk++;
+      if (h.tepat_waktu) ringkasan.tot++;
+      else if (h.terlambat) ringkasan.terlambat++;
+      else ringkasan.hadir++;
+    } else if (h.status === 'izin') ringkasan.izin++;
+    else if (h.status === 'sakit') ringkasan.sakit++;
+    else if (h.status === 'alpa') ringkasan.alpa++;
+    else if (h.status === 'belum') ringkasan.belum++;
+  }
+  ringkasan.persen = Math.round((ringkasan.masuk / ringkasan.efektif) * 100);
 
   const riwayat = {
     periode: { mulai: '2026-10-21', selesai: '2026-11-20', label: '21 Okt 2026 - 20 Nov 2026' },
     hariIni: '2026-11-20',
-    riwayat: [
-      { tanggal: '2026-11-19', jam: '06:41', status: 'hadir', tepat_waktu: true, jarak_m: 23 },
-      { tanggal: '2026-11-18', jam: '07:03', status: 'hadir', tepat_waktu: false, jarak_m: 41 },
-      { tanggal: '2026-11-17', jam: '06:35', status: 'hadir', tepat_waktu: true, jarak_m: 12 },
-      { tanggal: '2026-11-16', jam: '00:00', status: 'izin', tepat_waktu: false, jarak_m: null }
-    ]
+    hari,
+    ringkasan
   };
 
   await page.context().grantPermissions(['geolocation']);
@@ -60,6 +94,7 @@ async (page) => {
     halo: document.getElementById('absen-halo').textContent,
     jarak: document.getElementById('info-jarak').textContent,
     pesan: document.getElementById('info-pesan').textContent,
-    riwayat: document.getElementById('riwayat').innerText.replace(/\s+/g, ' ').slice(0, 100)
+    barisRiwayat: document.querySelectorAll('#riwayat .rb').length,
+    ringkasRiwayat: document.getElementById('riwayat-ringkas').innerText.replace(/\n/g, ' | ')
   }));
 }

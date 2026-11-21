@@ -94,6 +94,14 @@ dicatat admin, `S` sakit, `I` izin, `A` alpa, `L` libur. Kolom total TOT/TL/H/S/
 %Hadir menempel di kanan. Klik sel → foto absen, jam, jarak, akurasi, dan ubah status +
 catatan. Ada **Export CSV** dan **Cetak** A4 landscape.
 
+## Riwayat per periode (halaman guru)
+
+Riwayat menampilkan **semua tanggal dalam periode gaji** (21 bulan lalu - 20 bulan ini), bukan
+hanya yang ada absennya. Tiap baris: tanggal, status (Tepat waktu / Hadir / Terlambat / Izin /
+Sakit / Alpa / Libur / **Belum absen**), jam, dan jarak. Di atas daftar ada ringkasan: masuk,
+tepat waktu, terlambat, izin, sakit, alpa, belum absen, dan % kehadiran periode itu.
+Tombol panah memindahkan periode (bulan sebelumnya/berikutnya).
+
 ## Ringkasan periode gaji (halaman guru)
 
 Di akun tiap guru ada kartu **Ringkasan periode gaji**: jumlah tepat waktu (TOT),

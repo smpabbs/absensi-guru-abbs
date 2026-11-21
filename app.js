@@ -556,12 +556,12 @@ async function kirimAbsen() {
 }
 
 async function muatRiwayat(mulai) {
-  const tb = $('riwayat');
+  const daftar = $('riwayat');
   let data;
   try {
     data = await api('riwayat', mulai ? { mulai } : {});
   } catch (err) {
-    tb.innerHTML = `<tr><td colspan="4" style="color:var(--merah)">${err.message}</td></tr>`;
+    daftar.innerHTML = `<li class="riwayat-kosong">${err.message}</li>`;
     return;
   }
 
@@ -570,20 +570,46 @@ async function muatRiwayat(mulai) {
   $('riwayat-maju').disabled = !periodeSekarang || data.periode.mulai >= periodeSekarang;
   $('riwayat-mundur').disabled = false;
 
-  if (!data.riwayat?.length) {
-    tb.innerHTML = '<tr><td colspan="4" style="color:var(--ink-lembut)">Belum ada absensi pada periode ini.</td></tr>';
-    return;
+  const r = data.ringkasan || {};
+  const chip = (label, nilai) => `<div class="chip">${label} <b>${nilai ?? 0}</b></div>`;
+  $('riwayat-ringkas').innerHTML =
+    chip('Masuk', r.masuk) + chip('Tepat waktu', r.tot) + chip('Terlambat', r.terlambat) +
+    chip('Izin', r.izin) + chip('Sakit', r.sakit) + chip('Alpa', r.alpa) +
+    chip('Belum absen', r.belum) +
+    `<div class="chip chip-persen">Kehadiran <b>${r.persen ?? 0}%</b></div>`;
+
+  daftar.innerHTML = (data.hari || []).map(h => {
+    const { label, kelas } = statusHari(h);
+    const tgl = new Date(h.tanggal + 'T00:00:00');
+    const hariKe = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'][tgl.getDay()];
+    const iniHari = h.tanggal === data.hariIni ? ' rb-ini' : '';
+
+    const rinci = [];
+    if (h.jam && h.jam !== '00:00') rinci.push(`<span class="rb-jam">${h.jam}</span>`);
+    if (h.jarak_m != null) rinci.push(`<span class="rb-jarak">${Math.round(h.jarak_m)} m</span>`);
+    if (h.catatan) rinci.push(`<span class="rb-catatan">${h.catatan}</span>`);
+
+    return `<li class="rb${iniHari}">
+      <span class="rb-tgl"><b>${Number(h.tanggal.slice(8))}</b><i>${hariKe}</i></span>
+      <span class="rb-status ${kelas}">${label}</span>
+      <span class="rb-rinci">${rinci.join('')}</span>
+    </li>`;
+  }).join('') || '<li class="riwayat-kosong">Belum ada data pada periode ini.</li>';
+}
+
+function statusHari(h) {
+  if (h.status === 'hadir') {
+    if (h.tepat_waktu) return { label: 'Tepat waktu', kelas: 'ok' };
+    if (h.terlambat) return { label: 'Terlambat', kelas: 'peringatan' };
+    return { label: 'Hadir', kelas: 'netral' };
   }
-  tb.innerHTML = data.riwayat.map(r => {
-    const kode = labelStatus(r);
-    const kls = r.status !== 'hadir' ? 'k-i' : (r.tepat_waktu ? 'k-tot' : 'k-tl');
-    return `<tr>
-      <td>${r.tanggal.split('-').reverse().join('/')}</td>
-      <td>${potongJam(r.jam) === '00:00' ? '—' : potongJam(r.jam)}</td>
-      <td><span class="k-${kls.replace('k-', '')}" style="padding:3px 9px;border-radius:999px;font-size:12px">${kode}</span></td>
-      <td>${r.jarak_m != null ? Math.round(r.jarak_m) + ' m' : '—'}</td>
-    </tr>`;
-  }).join('');
+  if (h.status === 'libur') return { label: 'Libur', kelas: 'abu' };
+  if (h.status === 'akan') return { label: '—', kelas: 'abu' };
+  if (h.status === 'belum') return { label: 'Belum absen', kelas: 'kosong' };
+  if (h.status === 'izin') return { label: 'Izin', kelas: 'ungu' };
+  if (h.status === 'sakit') return { label: 'Sakit', kelas: 'biru' };
+  if (h.status === 'alpa') return { label: 'Alpa', kelas: 'bahaya' };
+  return { label: h.status, kelas: 'abu' };
 }
 
 // ── rekap (admin) ───────────────────────────────────────────────────────────

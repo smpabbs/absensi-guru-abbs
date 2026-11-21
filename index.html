@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fira+Sans:wght@300;400;500;600;700&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=7">
+<link rel="stylesheet" href="styles.css?v=8">
 </head>
 <body>
 
@@ -162,10 +162,12 @@
         <button class="tombol putih kecil" id="riwayat-maju" type="button" aria-label="Periode berikutnya">›</button>
       </div>
     </div>
-    <table class="riwayat">
-      <thead><tr><th>Tanggal</th><th>Jam</th><th>Status</th><th>Jarak</th></tr></thead>
-      <tbody id="riwayat"><tr><td colspan="4" style="color:var(--ink-lembut)">Memuat…</td></tr></tbody>
-    </table>
+
+    <div class="ringkas ringkas-riwayat" id="riwayat-ringkas"></div>
+
+    <ul class="riwayat-daftar" id="riwayat">
+      <li class="riwayat-kosong">Memuat…</li>
+    </ul>
   </section>
 </main>
 
@@ -184,51 +186,73 @@
       <h2 id="judul-pengaturan">Pengaturan absensi</h2>
       <p class="meta">Titik sekolah, radius, jam masuk, batas TOT, hari kerja, dan hari libur.</p>
 
-      <div class="form-grid">
-        <div>
-          <label for="set-lat">Lintang titik sekolah</label>
-          <input type="number" id="set-lat" step="0.000001">
+      <div class="modal-bagian">
+        <h3>Lokasi absen</h3>
+        <p class="modal-bantuan">Titik pusat absen. Guru harus berada dalam radius ini saat mengirim absen.</p>
+        <div class="form-grid dua">
+          <div>
+            <label for="set-lat">Lintang</label>
+            <input type="number" id="set-lat" step="0.000001">
+          </div>
+          <div>
+            <label for="set-lon">Bujur</label>
+            <input type="number" id="set-lon" step="0.000001">
+          </div>
+          <div>
+            <label for="set-radius">Radius absen (meter)</label>
+            <input type="number" id="set-radius" min="10" max="5000" step="1">
+          </div>
+          <div class="selaras-bawah">
+            <button class="tombol putih lebar" id="set-lokasi-saya" type="button">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2"
+                   stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0Z"></path><circle cx="12" cy="10" r="3"></circle>
+              </svg>
+              Gunakan lokasi saya
+            </button>
+          </div>
         </div>
-        <div>
-          <label for="set-lon">Bujur titik sekolah</label>
-          <input type="number" id="set-lon" step="0.000001">
-        </div>
-        <div>
-          <label for="set-radius">Radius absen (meter)</label>
-          <input type="number" id="set-radius" min="10" max="5000" step="1">
-        </div>
-        <div>
-          <label for="set-masuk">Jam masuk (batas terlambat)</label>
-          <input type="time" id="set-masuk">
-        </div>
-        <div>
-          <label for="set-tot">Batas TOT (tepat waktu)</label>
-          <input type="time" id="set-tot">
+        <p class="modal-bantuan kecil" id="set-info"></p>
+      </div>
+
+      <div class="modal-bagian">
+        <h3>Waktu</h3>
+        <p class="modal-bantuan">
+          Absen ≤ batas TOT dihitung <b>tepat waktu</b>; setelah batas TOT sampai jam masuk dihitung
+          <b>hadir</b>; setelah jam masuk dihitung <b>terlambat</b>.
+        </p>
+        <div class="form-grid dua">
+          <div>
+            <label for="set-tot">Batas TOT (tepat waktu)</label>
+            <input type="time" id="set-tot">
+          </div>
+          <div>
+            <label for="set-masuk">Jam masuk (batas terlambat)</label>
+            <input type="time" id="set-masuk">
+          </div>
         </div>
       </div>
 
-      <div style="margin-top:14px">
-        <label>Hari kerja</label>
+      <div class="modal-bagian">
+        <h3>Hari kerja</h3>
+        <p class="modal-bantuan">Hari di luar pilihan ini otomatis dianggap libur.</p>
         <div class="hari" id="set-hari"></div>
       </div>
 
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:16px;align-items:center">
-        <button class="tombol" id="set-simpan" type="button">Simpan pengaturan</button>
-        <button class="tombol putih" id="set-lokasi-saya" type="button">Gunakan lokasi saya</button>
-        <span id="set-info" style="font-size:12px;color:var(--ink-lembut)"></span>
+      <div class="modal-bagian">
+        <h3>Hari libur</h3>
+        <p class="modal-bantuan">Tanggal yang dikecualikan (libur semester, hari besar, dsb).</p>
+        <div class="form-grid libur-form">
+          <div><input type="date" id="libur-tanggal" aria-label="Tanggal libur"></div>
+          <div><input type="text" id="libur-ket" placeholder="Keterangan (mis. libur semester)"></div>
+          <div><button class="tombol putih lebar" id="libur-tambah" type="button">Tambah</button></div>
+        </div>
+        <div class="libur-daftar" id="libur-daftar"></div>
       </div>
 
-      <hr style="border:none;border-top:1px solid var(--garis);margin:18px 0">
-      <label>Hari libur</label>
-      <div class="form-grid">
-        <div><input type="date" id="libur-tanggal"></div>
-        <div><input type="text" id="libur-ket" placeholder="Keterangan (mis. Libur semester)"></div>
-        <div><button class="tombol putih" id="libur-tambah" type="button">Tambah libur</button></div>
-      </div>
-      <div class="libur-daftar" id="libur-daftar"></div>
-
-      <div class="aksi">
+      <div class="modal-kaki">
         <button class="tombol putih" id="pengaturan-tutup" type="button">Tutup</button>
+        <button class="tombol" id="set-simpan" type="button">Simpan pengaturan</button>
       </div>
     </div>
   </div>
@@ -279,6 +303,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="config.js"></script>
-<script src="app.js?v=7"></script>
+<script src="app.js?v=8"></script>
 </body>
 </html>

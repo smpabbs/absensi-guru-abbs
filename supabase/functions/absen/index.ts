@@ -311,17 +311,70 @@ Deno.serve(async (req) => {
           ? periodeDariMulai(minta)
           : periodeGaji(tanggal);
 
-        const { data, error } = await admin.from("absen_presensi")
-          .select("tanggal,jam,status,tepat_waktu,terlambat,jarak_m")
+        const { data: rows, error } = await admin.from("absen_presensi")
+          .select("tanggal,jam,status,tepat_waktu,terlambat,jarak_m,catatan")
           .eq("user_id", profil.id)
-          .gte("tanggal", periode.mulai).lte("tanggal", periode.selesai)
-          .order("tanggal", { ascending: false });
-
+          .gte("tanggal", periode.mulai).lte("tanggal", periode.selesai);
         if (error) return galat("Gagal memuat riwayat: " + error.message, 500);
+
+        const { data: libur } = await admin.from("absen_libur")
+          .select("tanggal").gte("tanggal", periode.mulai).lte("tanggal", periode.selesai);
+
+        const peta = new Map((rows ?? []).map((r) => [r.tanggal, r]));
+        const setLibur = new Set((libur ?? []).map((l) => l.tanggal));
+        const kerja = new Set(pengaturan.hari_kerja);
+
+        const ringkasan = { tot: 0, hadir: 0, terlambat: 0, izin: 0, sakit: 0, alpa: 0, belum: 0, efektif: 0 };
+        const hari: Record<string, unknown>[] = [];
+
+        for (
+          let d = new Date(periode.mulai + "T00:00:00Z");
+          d <= new Date(periode.selesai + "T00:00:00Z");
+          d.setUTCDate(d.getUTCDate() + 1)
+        ) {
+          const tgl = d.toISOString().slice(0, 10);
+          const dow = isoDow(tgl);
+          const rec = peta.get(tgl);
+          const liburHari = setLibur.has(tgl) || !kerja.has(dow);
+
+          let status: string;
+          if (liburHari) status = "libur";
+          else if (rec) status = rec.status;
+          else if (tgl > tanggal) status = "akan";
+          else status = "belum";
+
+          if (!liburHari && tgl <= tanggal) ringkasan.efektif++;
+
+          if (status === "hadir") {
+            if (rec?.tepat_waktu) ringkasan.tot++;
+            else if (rec?.terlambat) ringkasan.terlambat++;
+            else ringkasan.hadir++;
+          } else if (status === "izin") ringkasan.izin++;
+          else if (status === "sakit") ringkasan.sakit++;
+          else if (status === "alpa") ringkasan.alpa++;
+          else if (status === "belum") ringkasan.belum++;
+
+          hari.push({
+            tanggal: tgl,
+            status,
+            jam: rec ? potongJam(rec.jam) : null,
+            tepat_waktu: rec?.tepat_waktu ?? false,
+            terlambat: rec?.terlambat ?? false,
+            jarak_m: rec?.jarak_m ?? null,
+            catatan: rec?.catatan ?? null
+          });
+        }
+
+        const masuk = ringkasan.tot + ringkasan.hadir + ringkasan.terlambat;
         return jawab({
           periode,
           hariIni: tanggal,
-          riwayat: (data ?? []).map((r) => ({ ...r, jam: potongJam(r.jam) }))
+          hari,
+          ringkasan: {
+            ...ringkasan,
+            masuk,
+            persen: ringkasan.efektif ? Math.round((masuk / ringkasan.efektif) * 100) : 0
+          }
         });
       }
 

@@ -648,3 +648,80 @@ select option { background: #0a1311; color: var(--ink); }
 @media (prefers-reduced-motion: reduce) {
   #tombol-absen:not(:disabled) { animation: none; }
 }
+
+/* -- riwayat harian (guru) ------------------------------------------------ */
+.ringkas-riwayat { margin: 12px 0 8px; }
+.riwayat-daftar { list-style: none; margin: 0; padding: 0; }
+
+.rb {
+  display: grid;
+  grid-template-columns: 54px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+  border-top: 1px solid var(--garis);
+}
+.rb:first-child { border-top: none; }
+.rb-ini {
+  background: rgba(52, 211, 153, .07);
+  border-radius: 10px;
+  padding-left: 10px; padding-right: 10px;
+  margin-left: -10px; margin-right: -10px;
+}
+
+.rb-tgl { display: flex; flex-direction: column; align-items: center; line-height: 1.15; }
+.rb-tgl b { font-family: "Fira Code", ui-monospace, monospace; font-size: 16px; font-weight: 600; }
+.rb-tgl i { font-style: normal; font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-lembut); }
+
+.rb-status {
+  justify-self: start;
+  padding: 4px 11px; border-radius: 999px;
+  font-size: 11px; font-weight: 650; letter-spacing: .01em;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.rb-status.ok { background: rgba(52, 211, 153, .14); border-color: rgba(52, 211, 153, .3); color: #6ee7b7; }
+.rb-status.peringatan { background: rgba(251, 191, 36, .13); border-color: rgba(251, 191, 36, .3); color: #fcd34d; }
+.rb-status.netral { background: rgba(148, 163, 184, .14); border-color: rgba(148, 163, 184, .3); color: #cbd5e1; }
+.rb-status.ungu { background: rgba(167, 139, 250, .14); border-color: rgba(167, 139, 250, .3); color: #c4b5fd; }
+.rb-status.biru { background: rgba(56, 189, 248, .13); border-color: rgba(56, 189, 248, .28); color: #7dd3fc; }
+.rb-status.bahaya { background: rgba(248, 113, 113, .13); border-color: rgba(248, 113, 113, .3); color: #fca5a5; }
+.rb-status.abu { background: rgba(255, 255, 255, .05); border-color: var(--garis); color: var(--ink-lembut); }
+.rb-status.kosong { background: transparent; border-color: rgba(248, 113, 113, .28); color: #fca5a5; }
+
+.rb-rinci { display: flex; align-items: center; gap: 10px; justify-self: end; }
+.rb-jam { font-family: "Fira Code", ui-monospace, monospace; font-size: 12px; color: var(--ink); }
+.rb-jarak { font-family: "Fira Code", ui-monospace, monospace; font-size: 11px; color: var(--ink-lembut); }
+.rb-catatan { font-size: 11.5px; color: var(--ink-lembut); max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.riwayat-kosong { color: var(--ink-lembut); font-size: 13px; padding: 16px 0; }
+
+/* -- panel pengaturan: bagian rapi ---------------------------------------- */
+.modal-bagian { padding: 16px 0 4px; border-top: 1px solid var(--garis); }
+.modal-bagian:first-of-type { border-top: none; padding-top: 0; }
+.modal-bagian h3 {
+  font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--mint); margin-bottom: 4px;
+}
+.modal-bantuan { font-size: 11.5px; line-height: 1.55; color: var(--ink-lembut); margin-bottom: 10px; }
+.modal-bantuan.kecil { margin: 8px 0 0; font-size: 11px; }
+.form-grid.dua { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.form-grid.libur-form { grid-template-columns: 155px minmax(0, 1fr) 110px; align-items: start; }
+.selaras-bawah { display: flex; align-items: flex-end; }
+
+.modal-kaki {
+  position: sticky; bottom: -22px;
+  display: flex; gap: 8px; justify-content: flex-end;
+  margin: 18px -22px -22px; padding: 14px 22px 18px;
+  background: linear-gradient(180deg, rgba(10, 19, 17, 0), #0a1311 45%);
+  border-top: 1px solid var(--garis);
+}
+
+@media (max-width: 760px) {
+  .form-grid.dua, .form-grid.libur-form { grid-template-columns: 1fr; }
+  .modal-bagian { padding-top: 14px; }
+  .modal-kaki { margin: 16px -18px -18px; padding: 12px 18px calc(14px + env(safe-area-inset-bottom)); }
+  .rb { grid-template-columns: 46px 1fr auto; }
+  .rb-rinci { gap: 8px; }
+  .rb-catatan { display: none; }
+}
