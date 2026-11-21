@@ -1,19 +1,21 @@
-name: Bersihkan foto absensi lama
+name: Arsip periode absensi (akhir periode)
 
-# Menghapus foto absen yang lebih tua dari batas simpan (default 60 hari).
-# Data absen (jam, status, jarak) tidak dihapus — hanya fotonya.
-# Butuh repo secret: ABSEN_CRON_SECRET (sama dengan secret CRON_SECRET di project Supabase).
+# Dijalankan setiap tanggal 21 pukul 00:30 WIB (20 pukul 17:30 UTC):
+# 1) memastikan semua foto periode 21→20 yang baru selesai sudah tersalin ke Drive,
+# 2) menghapus foto periode itu dari Supabase Storage (data absen tetap permanen),
+# 3) mencatat periode ke tabel absen_arsip.
+# Butuh repo secret: ABSEN_CRON_SECRET.
 
 on:
   schedule:
-    - cron: "30 19 * * *"   # 02:30 WIB setiap hari
+    - cron: "30 17 20 * *"   # tanggal 20 pukul 17:30 UTC = 21 pukul 00:30 WIB
   workflow_dispatch:
 
 jobs:
-  bersihkan:
+  arsipkan:
     runs-on: ubuntu-latest
     steps:
-      - name: Panggil Edge Function
+      - name: Panggil Edge Function (arsip_final)
         env:
           CRON_SECRET: ${{ secrets.ABSEN_CRON_SECRET }}
         run: |
@@ -24,6 +26,6 @@ jobs:
             "https://lthyqvxpiykqfaqrumcx.supabase.co/functions/v1/absen" \
             -H "Content-Type: application/json" \
             -H "x-cron-secret: $CRON_SECRET" \
-            -d '{"action":"bersihkan_foto"}')
+            -d '{"action":"arsip_final"}')
           echo "$hasil"
           echo "$hasil" | grep -q '"ok":true'

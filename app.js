@@ -86,14 +86,21 @@ function haversine(lat1, lon1, lat2, lon2) {
 
 // Foto disimpan di project penyimpanan presensi; URL bertanda tangan diambil
 // lewat fungsi server (bukan akses langsung).
-async function urlFoto(path) {
-  if (!path) return null;
+async function urlFoto(rec) {
+  if (!rec) return null;
   try {
-    const { url } = await api('foto', { path });
-    return url || null;
+    if (rec.foto_path) {
+      const { url } = await api('foto', { path: rec.foto_path });
+      return url || null;
+    }
+    if (rec.arsip_drive_id) {
+      const { url } = await api('foto', { id: rec.arsip_drive_id });
+      return url || null;
+    }
   } catch {
     return null;
   }
+  return null;
 }
 
 function tampilkan(view) {
@@ -189,7 +196,7 @@ function pasangEvent() {
   $('rekap-cetak').addEventListener('click', () => window.print());
   $('tirai').addEventListener('click', (e) => { if (e.target.id === 'tirai') tutupModal(); });
   $('set-simpan').addEventListener('click', simpanPengaturan);
-  $('set-bersihkan').addEventListener('click', bersihkanFoto);
+  $('set-arsip').addEventListener('click', arsipkanPeriodeLalu);
   $('rekap-pengaturan').addEventListener('click', bukaPengaturan);
   $('pengaturan-tutup').addEventListener('click', tutupPengaturan);
   $('tirai-pengaturan').addEventListener('click', (e) => { if (e.target.id === 'tirai-pengaturan') tutupPengaturan(); });
@@ -837,7 +844,7 @@ function bukaModal(uid, tgl) {
   }
 
   if (rec?.foto_path) {
-    urlFoto(rec.foto_path).then(u => {
+    urlFoto(rec).then(u => {
       const box = $('modal-foto');
       if (!box) return;
       box.outerHTML = u ? `<img src="${u}" alt="Foto absen">` : '<p style="font-size:12.5px;color:var(--ink-lembut)">Foto tidak tersedia.</p>';
@@ -879,7 +886,7 @@ function isiFormPengaturan() {
   $('set-radius').value = pengaturan.radius_m;
   $('set-tot').value = potongJam(pengaturan.batas_tot);
   $('set-masuk').value = potongJam(pengaturan.batas_masuk || '07:00:00');
-  $('set-simpan').value = pengaturan.simpan_foto_hari ?? 60;
+
 
   const box = $('set-hari');
   if (!box.dataset.siap) {
@@ -903,7 +910,7 @@ async function simpanPengaturan() {
     radius_m: Math.round(Number($('set-radius').value)),
     batas_tot: $('set-tot').value,
     batas_masuk: $('set-masuk').value,
-    simpan_foto_hari: Number($('set-simpan').value),
+
     hari_kerja: hari
   };
   if (!Number.isFinite(isi.lat) || !Number.isFinite(isi.lon)) return toast('Koordinat tidak valid.');
@@ -1094,20 +1101,18 @@ function fotoKompres(video, canvas) {
   return data;
 }
 
-async function bersihkanFoto() {
-  if (modeDemo) return toast('Mode demo: tidak ada foto untuk dibersihkan.');
-  const hari = Number($('set-simpan').value);
-  if (!(hari >= 1 && hari <= 3650)) return toast('Isi batas simpan foto (1-3650 hari).');
-  if (!confirm(`Hapus foto absen yang lebih tua dari ${hari} hari? Data absennya tetap tersimpan.`)) return;
+async function arsipkanPeriodeLalu() {
+  if (modeDemo) return toast('Mode demo: arsip tidak dijalankan.');
+  if (!confirm('Salin semua foto periode lalu ke Google Drive, lalu hapus fotonya dari Supabase?\nData absen (jam, status, jarak) tetap tersimpan.')) return;
 
-  $('set-bersihkan-info').textContent = 'Membersihkan�';
+  $('set-arsip-info').textContent = 'Mengarsipkan… (bisa 1-2 menit)';
   try {
-    const hasil = await api('bersihkan_foto', { hari });
-    $('set-bersihkan-info').textContent =
-      `${hasil.dihapus} foto dihapus (lebih tua dari ${hasil.batas}).`;
-    toast(hasil.dihapus ? `${hasil.dihapus} foto dibersihkan.` : 'Tidak ada foto lama.');
+    const hasil = await api('arsip_final', {});
+    $('set-arsip-info').textContent =
+      `Periode ${hasil.periode.label}: ${hasil.terarsip} foto disalin, ${hasil.dihapus} foto dibersihkan.`;
+    toast(hasil.dihapus ? `${hasil.dihapus} foto diarsipkan ke Drive.` : 'Arsip periode lalu sudah rapi.');
   } catch (err) {
-    $('set-bersihkan-info').textContent = '';
+    $('set-arsip-info').textContent = '';
     toast(err.message);
   }
 }

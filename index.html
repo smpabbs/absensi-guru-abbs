@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fira+Sans:wght@300;400;500;600;700&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=9">
+<link rel="stylesheet" href="styles.css?v=10">
 </head>
 <body>
 
@@ -234,21 +234,18 @@
       </div>
 
       <div class="modal-bagian">
-        <h3>Penyimpanan foto</h3>
+        <h3>Arsip Google Drive</h3>
         <p class="modal-bantuan">
-          Foto absen otomatis dihapus setelah beberapa hari supaya penyimpanan tidak penuh.
-          Data absen (jam, status, jarak) <b>tetap disimpan permanen</b>. Isi 0 untuk menyimpan foto selamanya.
+          Foto absen disalin ke Drive setiap malam. Setiap <b>akhir periode (tanggal 21)</b>, foto
+          periode lalu dihapus dari Supabase setelah dipastikan tersalin — data absen (jam, status,
+          jarak) tetap permanen. Folder:
+          <a href="https://drive.google.com/drive/folders/1IS6l0hXaXpzeiwsXb1zWQzMTtGLRngL7"
+             target="_blank" rel="noopener" style="color:var(--mint)">project/absensi guru</a>.
         </p>
-        <div class="form-grid dua">
-          <div>
-            <label for="set-simpan">Simpan foto (hari)</label>
-            <input type="number" id="set-simpan" min="0" max="3650" step="1">
-          </div>
-          <div class="selaras-bawah">
-            <button class="tombol putih lebar" id="set-bersihkan" type="button">Bersihkan foto lama sekarang</button>
-          </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <button class="tombol putih" id="set-arsip" type="button">Arsipkan periode lalu sekarang</button>
         </div>
-        <p class="modal-bantuan kecil" id="set-bersihkan-info"></p>
+        <p class="modal-bantuan kecil" id="set-arsip-info"></p>
       </div>
 
       <div class="modal-bagian">
@@ -321,6 +318,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="config.js"></script>
-<script src="app.js?v=9"></script>
+<script src="app.js?v=10"></script>
 </body>
 </html>

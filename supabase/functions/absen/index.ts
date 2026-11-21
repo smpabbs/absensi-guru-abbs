@@ -173,6 +173,143 @@ async function urlFoto(path: string) {
   return data?.signedUrl ?? null;
 }
 
+// ── Google Drive (arsip) ────────────────────────────────────────────────────
+const GDRIVE_FOLDER = Deno.env.get("GDRIVE_FOLDER_ID") ?? "";
+let tokenDriveCache: { token: string; exp: number } | null = null;
+
+async function tokenDrive() {
+  if (tokenDriveCache && Date.now() < tokenDriveCache.exp) return tokenDriveCache.token;
+
+  const r = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: Deno.env.get("GDRIVE_CLIENT_ID") ?? "",
+      client_secret: Deno.env.get("GDRIVE_CLIENT_SECRET") ?? "",
+      refresh_token: Deno.env.get("GDRIVE_REFRESH_TOKEN") ?? "",
+      grant_type: "refresh_token"
+    })
+  });
+  const j = await r.json();
+  if (!j.access_token) throw new Error("Gagal mengambil token Google: " + JSON.stringify(j).slice(0, 200));
+
+  tokenDriveCache = { token: j.access_token, exp: Date.now() + Math.max(60, (j.expires_in ?? 3600) - 120) * 1000 };
+  return tokenDriveCache.token;
+}
+
+const folderCache = new Map<string, string>();
+
+async function folderDrive(periode: { mulai: string; selesai: string }) {
+  const nama = `${periode.mulai} sd ${periode.selesai}`;
+  if (folderCache.has(nama)) return folderCache.get(nama)!;
+
+  const token = await tokenDrive();
+  const q = encodeURIComponent(
+    `name='${nama}' and '${GDRIVE_FOLDER}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`
+  );
+  const cari = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)&supportsAllDrives=true&includeItemsFromAllDrives=true`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  const hasilCari = await cari.json();
+  if (hasilCari.files?.length) {
+    folderCache.set(nama, hasilCari.files[0].id);
+    return hasilCari.files[0].id as string;
+  }
+
+  const buat = await fetch("https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&fields=id", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify({ name: nama, mimeType: "application/vnd.google-apps.folder", parents: [GDRIVE_FOLDER] })
+  });
+  const hasilBuat = await buat.json();
+  if (!hasilBuat.id) throw new Error("Gagal membuat folder Drive: " + JSON.stringify(hasilBuat).slice(0, 200));
+
+  folderCache.set(nama, hasilBuat.id);
+  return hasilBuat.id as string;
+}
+
+async function unggahDrive(nama: string, folderId: string, bytes: Uint8Array) {
+  const token = await tokenDrive();
+  const boundary = "----absen" + crypto.randomUUID();
+  const enc = new TextEncoder();
+  const kepala = enc.encode(
+    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n` +
+    JSON.stringify({ name: nama, parents: [folderId] }) +
+    `\r\n--${boundary}\r\nContent-Type: image/jpeg\r\n\r\n`
+  );
+  const ekor = enc.encode(`\r\n--${boundary}--`);
+
+  const isi = new Uint8Array(kepala.length + bytes.length + ekor.length);
+  isi.set(kepala, 0);
+  isi.set(bytes, kepala.length);
+  isi.set(ekor, kepala.length + bytes.length);
+
+  const r = await fetch(
+    "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id&supportsAllDrives=true",
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": `multipart/related; boundary=${boundary}` },
+      body: isi
+    }
+  );
+  const j = await r.json();
+  if (!j.id) throw new Error("Gagal mengunggah ke Drive: " + JSON.stringify(j).slice(0, 200));
+  return j.id as string;
+}
+
+async function unduhDrive(id: string) {
+  const token = await tokenDrive();
+  const r = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media&supportsAllDrives=true`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!r.ok) return null;
+  return new Uint8Array(await r.arrayBuffer());
+}
+
+const namaFileDrive = (r: { tanggal: string; nama?: string | null; jam: string }) =>
+  `${r.tanggal}_${(r.nama ?? "guru").replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40)}_${String(r.jam).slice(0, 5).replace(":", "")}.jpg`;
+
+async function arsipkanBatch(batas = 60, periode?: { mulai: string; selesai: string }) {
+  let q = admin.from("absen_presensi")
+    .select("id,tanggal,jam,user_id,nama,foto_path")
+    .not("foto_path", "is", null)
+    .is("arsip_drive_id", null)
+    .order("tanggal", { ascending: true })
+    .limit(batas);
+  if (periode) q = q.gte("tanggal", periode.mulai).lte("tanggal", periode.selesai);
+
+  const { data: rows } = await q;
+  let terarsip = 0, gagal = 0;
+
+  for (const r of rows ?? []) {
+    try {
+      const { data: blob, error } = await admin.storage.from(BUCKET).download(r.foto_path as string);
+      if (error || !blob) { gagal++; continue; }
+
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      const folder = await folderDrive(periodeGaji(r.tanggal as string));
+      const idDrive = await unggahDrive(namaFileDrive(r as any), folder, bytes);
+
+      const { error: errUpdate } = await admin.from("absen_presensi")
+        .update({ arsip_drive_id: idDrive, arsip_at: new Date().toISOString() })
+        .eq("id", r.id);
+      if (errUpdate) gagal++; else terarsip++;
+    } catch (e) {
+      console.error("arsip gagal", r.id, e);
+      gagal++;
+    }
+  }
+
+  return { terarsip, gagal, dibaca: rows?.length ?? 0 };
+}
+
+function periodeTerakhirSelesai(tanggal: string) {
+  const d = new Date(tanggal + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() - 1);
+  return periodeGaji(d.toISOString().slice(0, 10));
+}
+
 // ── handler ─────────────────────────────────────────────────────────────────
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -184,7 +321,8 @@ Deno.serve(async (req) => {
 
   // Pemanggilan terjadwal (cron) untuk membersihkan foto lama — tanpa akun pengguna.
   const rahasiaCron = Deno.env.get("CRON_SECRET") ?? "";
-  const cronOk = aksi === "bersihkan_foto" && !!rahasiaCron &&
+  const aksiCron = ["bersihkan_foto", "arsip_harian", "arsip_final"];
+  const cronOk = aksiCron.includes(aksi) && !!rahasiaCron &&
     req.headers.get("x-cron-secret") === rahasiaCron;
 
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
@@ -410,7 +548,7 @@ Deno.serve(async (req) => {
 
         const guru = await daftarGuru(token, pengaturan.sekolah_id);
         const { data: rows, error } = await admin.from("absen_presensi")
-          .select("user_id,tanggal,jam,status,tepat_waktu,terlambat,jarak_m,akurasi_m,foto_path,foto_dihapus,catatan,dicatat_oleh")
+          .select("user_id,tanggal,jam,status,tepat_waktu,terlambat,jarak_m,akurasi_m,foto_path,foto_dihapus,arsip_drive_id,catatan,dicatat_oleh")
           .eq("sekolah_id", pengaturan.sekolah_id)
           .gte("tanggal", awal).lte("tanggal", akhir);
         if (error) return galat("Gagal memuat rekap: " + error.message, 500);
@@ -544,6 +682,25 @@ Deno.serve(async (req) => {
 
       // ── foto: signed url ──────────────────────────────────────────────────
       case "foto": {
+        // foto arsip di Google Drive (dikirim sebagai data URL)
+        const idDrive = String(body.id ?? "");
+        if (idDrive) {
+          const { data: baris } = await admin.from("absen_presensi")
+            .select("user_id").eq("arsip_drive_id", idDrive).maybeSingle();
+          if (!baris) return galat("Foto arsip tidak ditemukan.", 404, "FOTO");
+          if (baris.user_id !== profil?.id && !adminSekolah) {
+            return galat("Tidak berhak melihat foto ini.", 403, "AKSES");
+          }
+          const bytes = await unduhDrive(idDrive);
+          if (!bytes) return galat("Foto arsip tidak bisa dibuka.", 404, "FOTO");
+
+          let biner = "";
+          for (let i = 0; i < bytes.length; i += 0x8000) {
+            biner += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+          }
+          return jawab({ url: `data:image/jpeg;base64,${btoa(biner)}`, arsip: true });
+        }
+
         const path = String(body.path ?? "");
         if (!path) return galat("Path kosong.", 200, "DATA");
         const milikSendiri = path.startsWith(`${profil.id}/`);
@@ -551,6 +708,71 @@ Deno.serve(async (req) => {
         const url = await urlFoto(path);
         if (!url) return galat("Foto tidak ditemukan.", 404, "FOTO");
         return jawab({ url });
+      }
+
+      // ── arsip foto ke Google Drive ────────────────────────────────────────
+      case "arsip_harian": {
+        if (!cronOk && !adminSekolah) return galat("Hanya admin sekolah.", 403, "AKSES");
+        const hasil = await arsipkanBatch(Math.min(80, Number(body.batas ?? 60)));
+        return jawab({ ok: true, ...hasil });
+      }
+
+      case "arsip_final": {
+        if (!cronOk && !adminSekolah) return galat("Hanya admin sekolah.", 403, "AKSES");
+
+        const minta = String(body.mulai ?? "");
+        const periode = /^\d{4}-\d{2}-21$/.test(minta)
+          ? periodeDariMulai(minta)
+          : periodeTerakhirSelesai(tanggal);
+        if (periode.selesai >= tanggal) return galat("Periode belum selesai.", 200, "DATA");
+
+        const kering = Boolean(body.kering);
+
+        // pastikan semua foto periode ini sudah tersalin ke Drive
+        let terarsip = 0;
+        for (let i = 0; i < 12; i++) {
+          const h = await arsipkanBatch(40, periode);
+          terarsip += h.terarsip;
+          if (h.dibaca < 40) break;
+        }
+
+        const { count } = await admin.from("absen_presensi")
+          .select("id", { count: "exact", head: true })
+          .gte("tanggal", periode.mulai).lte("tanggal", periode.selesai)
+          .not("foto_path", "is", null).is("arsip_drive_id", null);
+        if ((count ?? 0) > 0) {
+          return galat(`Masih ${count} foto belum terarsip. Coba jalankan lagi nanti.`, 200, "ARSIP");
+        }
+
+        const { data: rows } = await admin.from("absen_presensi")
+          .select("id,foto_path")
+          .gte("tanggal", periode.mulai).lte("tanggal", periode.selesai)
+          .not("foto_path", "is", null);
+
+        let dihapus = 0;
+        if (!kering && rows?.length) {
+          const paths = rows.map((r) => r.foto_path as string);
+          for (let i = 0; i < paths.length; i += 200) {
+            await admin.storage.from(BUCKET).remove(paths.slice(i, i + 200));
+          }
+          const ids = rows.map((r) => r.id);
+          for (let i = 0; i < ids.length; i += 200) {
+            await admin.from("absen_presensi")
+              .update({ foto_path: null, foto_dihapus: true })
+              .in("id", ids.slice(i, i + 200));
+          }
+          dihapus = rows.length;
+
+          const folder = await folderDrive(periode);
+          await admin.from("absen_arsip").upsert({
+            periode_mulai: periode.mulai,
+            periode_selesai: periode.selesai,
+            folder_id: folder,
+            jumlah: dihapus
+          });
+        }
+
+        return jawab({ ok: true, periode, terarsip, dihapus, kering });
       }
 
       case "versi":
