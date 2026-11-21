@@ -11,6 +11,7 @@ create table if not exists public.absen_pengaturan (
   radius_m    integer not null default 50 check (radius_m between 10 and 5000),
   batas_tot   time not null default '06:50',
   batas_masuk time not null default '07:00',
+  simpan_foto_hari integer not null default 60,
   hari_kerja  smallint[] not null default '{1,2,3,4,5,6}',
   updated_at  timestamptz not null default now()
 );
@@ -30,6 +31,7 @@ create table if not exists public.absen_presensi (
                check (status in ('hadir','izin','sakit','alpa')),
   tepat_waktu  boolean not null default false,
   terlambat    boolean not null default false,
+  foto_dihapus boolean not null default false,
   lat          double precision,
   lon          double precision,
   akurasi_m    double precision,
@@ -63,5 +65,7 @@ on conflict (id) do nothing;
 -- Kolom yang ditambahkan belakangan (aman diulang)
 alter table public.absen_pengaturan add column if not exists batas_masuk time not null default '07:00';
 alter table public.absen_presensi   add column if not exists terlambat boolean not null default false;
+alter table public.absen_pengaturan add column if not exists simpan_foto_hari integer not null default 60;
+alter table public.absen_presensi   add column if not exists foto_dihapus boolean not null default false;
 
 -- Cek: select * from public.absen_pengaturan;
