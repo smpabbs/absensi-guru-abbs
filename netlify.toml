@@ -1,0 +1,22 @@
+# Netlify — situs statis (tanpa build step)
+# Publish folder root; file yang dipakai: index.html, app.js, styles.css, config.js.
+
+[build]
+  publish = "."
+  command = ""
+
+# Aset diberi versi (?v=…) di index.html, jadi aman di-cache lama.
+[[headers]]
+  for = "/app.js"
+  [headers.values]
+    Cache-Control = "public, max-age=3600"
+
+[[headers]]
+  for = "/styles.css"
+  [headers.values]
+    Cache-Control = "public, max-age=3600"
+
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"

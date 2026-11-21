@@ -40,6 +40,16 @@ LMS lebih dulu. Kata sandi tidak pernah disalin dan tidak bisa dibaca (hash bcry
 | `tests/` | pratinjau UI dengan data palsu & uji sesi nyata |
 | `BLUEPRINT.md` | latar belakang, data sekolah, keputusan desain |
 
+## Hosting
+
+- **Sekarang:** GitHub Pages - <https://smpabbs.github.io/absensi-guru-abbs/>
+- **Netlify:** sudah ada 
+etlify.toml (publish ., tanpa build). Tinggal hubungkan repo
+  smpabbs/absensi-guru-abbs, lalu ganti nama situs menjadi bsenguru agar alamatnya
+  https://absenguru.netlify.app. Belum bisa dieksekusi dari sini: token Netlify tidak tersimpan
+  di mesin ini, dan akun Netlify kurikulum pernah kena batas kredit build (deploy ditolak 403).
+- **VPS:** cukup arahkan document root ke folder repo (file statis), tidak perlu Node/PHP.
+
 ## Pasang / perbarui
 
 1. **Tabel** (sekali): jalankan `db/chat-project.sql` di SQL Editor project
