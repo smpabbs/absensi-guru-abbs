@@ -72,6 +72,10 @@ LMS lebih dulu. Kata sandi tidak pernah disalin dan tidak bisa dibaca (hash bcry
 | Guru | username LMS (mis. `tri.wijayanti`) + kata sandi LMS | halaman absen, ringkasan periode gaji, riwayat per periode |
 | Admin | `admin.abbs` + kata sandi LMS | rekap bulanan + pengaturan |
 
+Daftar guru diambil langsung dari LMS: hanya **role guru, sekolah SMP ABBS, status aktif**
+(40 orang). Guru nonaktif tidak bisa login dan tidak muncul di rekap, kecuali masih punya
+catatan pada bulan yang sedang dilihat (riwayat lama tetap tampil).
+
 Username diubah dulu jadi email akun LMS lewat RPC LMS `get_email_by_username`
 (atau pola `username@examfilq.dev`). Hanya guru/admin SMP ABBS yang boleh masuk.
 

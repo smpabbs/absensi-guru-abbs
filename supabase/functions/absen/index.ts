@@ -78,8 +78,9 @@ async function profilDariToken(token: string) {
 }
 
 async function daftarGuru(token: string, sekolahId: string) {
+  // hanya guru berstatus aktif yang bisa login/absen; guru nonaktif tidak ditampilkan
   const r = await fetch(
-    `${LMS_URL}/rest/v1/profiles?select=id,nama&role=eq.guru&sekolah_id=eq.${sekolahId}&order=nama`,
+    `${LMS_URL}/rest/v1/profiles?select=id,nama&role=eq.guru&status=eq.aktif&sekolah_id=eq.${sekolahId}&order=nama`,
     { headers: { apikey: LMS_KEY, Authorization: `Bearer ${token}` } }
   );
   if (!r.ok) return [];
@@ -548,10 +549,21 @@ Deno.serve(async (req) => {
 
         const guru = await daftarGuru(token, pengaturan.sekolah_id);
         const { data: rows, error } = await admin.from("absen_presensi")
-          .select("user_id,tanggal,jam,status,tepat_waktu,terlambat,jarak_m,akurasi_m,foto_path,foto_dihapus,arsip_drive_id,catatan,dicatat_oleh,diubah_at")
+          .select("user_id,nama,tanggal,jam,status,tepat_waktu,terlambat,jarak_m,akurasi_m,foto_path,foto_dihapus,arsip_drive_id,catatan,dicatat_oleh,diubah_at")
           .eq("sekolah_id", pengaturan.sekolah_id)
           .gte("tanggal", awal).lte("tanggal", akhir);
         if (error) return galat("Gagal memuat rekap: " + error.message, 500);
+
+        // guru yang sudah nonaktif tetap muncul bila punya catatan di bulan itu (riwayat)
+        const sudahAda = new Set(guru.map((g: { id: string }) => g.id));
+        for (const r of rows ?? []) {
+          if (!sudahAda.has(r.user_id)) {
+            guru.push({ id: r.user_id, nama: r.nama ?? "(nonaktif)" });
+            sudahAda.add(r.user_id);
+          }
+        }
+        guru.sort((a: { nama?: string }, b: { nama?: string }) =>
+          String(a.nama ?? "").localeCompare(String(b.nama ?? ""), "id"));
 
         const { data: libur } = await admin.from("absen_libur")
           .select("tanggal,keterangan").gte("tanggal", awal).lte("tanggal", akhir);
