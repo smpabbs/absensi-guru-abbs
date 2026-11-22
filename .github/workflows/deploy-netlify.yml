@@ -1,0 +1,33 @@
+name: Deploy ke Netlify
+
+# Deploy statis ke https://absenguruabbs.netlify.app setiap push ke main.
+# Site Netlify belum terhubung langsung ke GitHub (repo private tidak bisa via token),
+# jadi deploy dilakukan dari Actions memakai Netlify CLI.
+# Butuh repo secret: NETLIFY_AUTH_TOKEN dan NETLIFY_SITE_ID.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Kumpulkan file situs
+        run: |
+          mkdir -p dist
+          cp index.html app.js styles.css config.js netlify.toml dist/
+
+      - name: Deploy ke Netlify
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+        run: |
+          if [ -z "$NETLIFY_AUTH_TOKEN" ] || [ -z "$NETLIFY_SITE_ID" ]; then
+            echo "Secret NETLIFY_AUTH_TOKEN / NETLIFY_SITE_ID belum diisi."; exit 1
+          fi
+          npx --yes netlify-cli@latest deploy --prod --dir=dist \
+            --site "$NETLIFY_SITE_ID" --auth "$NETLIFY_AUTH_TOKEN"

@@ -42,12 +42,9 @@ LMS lebih dulu. Kata sandi tidak pernah disalin dan tidak bisa dibaca (hash bcry
 
 ## Hosting
 
-- **Sekarang:** GitHub Pages - <https://smpabbs.github.io/absensi-guru-abbs/>
-- **Netlify:** sudah ada 
-etlify.toml (publish ., tanpa build). Tinggal hubungkan repo
-  smpabbs/absensi-guru-abbs, lalu ganti nama situs menjadi bsenguru agar alamatnya
-  https://absenguru.netlify.app. Belum bisa dieksekusi dari sini: token Netlify tidak tersimpan
-  di mesin ini, dan akun Netlify kurikulum pernah kena batas kredit build (deploy ditolak 403).
+- **Netlify (utama):** <https://absenguruabbs.netlify.app> - deploy otomatis dari GitHub Actions
+  (.github/workflows/deploy-netlify.yml, secret NETLIFY_AUTH_TOKEN + NETLIFY_SITE_ID).
+- **GitHub Pages (cadangan):** <https://smpabbs.github.io/absensi-guru-abbs/>
 - **VPS:** cukup arahkan document root ke folder repo (file statis), tidak perlu Node/PHP.
 
 ## Pasang / perbarui
