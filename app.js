@@ -192,7 +192,7 @@ function pasangEvent() {
     if (riwayatPeriode) muatRiwayat(geserBulan(riwayatPeriode.mulai, 1));
   });
   $('rekap-cari').addEventListener('input', gambarUlangTabel);
-  $('rekap-csv').addEventListener('click', unduhCsv);
+  $('rekap-excel').addEventListener('click', unduhExcel);
   $('rekap-cetak').addEventListener('click', () => window.print());
   $('tirai').addEventListener('click', (e) => { if (e.target.id === 'tirai') tutupModal(); });
   $('set-simpan').addEventListener('click', simpanPengaturan);
@@ -994,37 +994,244 @@ async function tambahLibur() {
   await muatRekap();
 }
 
-// ── export CSV ──────────────────────────────────────────────────────────────
-function unduhCsv() {
-  const [tahun, bln] = rekap.bulan.split('-').map(Number);
-  const jumlahHari = new Date(tahun, bln, 0).getDate();
-  const baris = [];
+// ── export Excel (xlsx berformat) ───────────────────────────────────────────
+const EXCELJS_URL = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
 
-  const kepala = ['No', 'Guru'];
-  for (let d = 1; d <= jumlahHari; d++) kepala.push(String(d));
-  kepala.push('TOT', 'TL', 'H', 'S', 'I', 'A', '%Hadir');
-  baris.push(kepala);
+function muatExcelJS() {
+  if (window.ExcelJS) return Promise.resolve(window.ExcelJS);
+  if (muatExcelJS._janji) return muatExcelJS._janji;
 
-  rekap.guru.forEach((g, i) => {
-    const row = [i + 1, g.nama || ''];
-    for (let d = 1; d <= jumlahHari; d++) {
-      row.push(kodeSel(g.id, `${rekap.bulan}-${String(d).padStart(2, '0')}`).k);
-    }
-    const t = hitungTotal(g.id, jumlahHari);
-    row.push(t.tot, t.tl, t.h, t.s, t.i, t.a, t.persen);
-    baris.push(row);
+  muatExcelJS._janji = new Promise((selesai, gagal) => {
+    const s = document.createElement('script');
+    s.src = EXCELJS_URL;
+    s.onload = () => selesai(window.ExcelJS);
+    s.onerror = () => gagal(new Error('Gagal memuat pustaka Excel. Periksa koneksi internet.'));
+    document.head.appendChild(s);
   });
+  return muatExcelJS._janji;
+}
 
-  const csv = '\ufeff' + baris.map(r =>
-    r.map(v => typeof v === 'string' && v.includes(',') ? `"${v}"` : v).join(',')
-  ).join('\r\n');
+const HURUF_HARI = ['M', 'S', 'S', 'R', 'K', 'J', 'S'];
 
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-  a.download = `rekap-absensi-${rekap.bulan}.csv`;
-  a.click();
-  URL.revokeObjectURL(a.href);
-  toast('CSV diunduh.');
+async function unduhExcel() {
+  const tombol = $('rekap-excel');
+  const teksAsli = tombol.textContent;
+  tombol.disabled = true;
+  tombol.textContent = 'Menyiapkan…';
+
+  try {
+    const ExcelJS = await muatExcelJS();
+
+    const [tahun, bln] = rekap.bulan.split('-').map(Number);
+    const jumlahHari = new Date(tahun, bln, 0).getDate();
+    const judulBulan = bulanPanjang(rekap.bulan);
+    const kolomAwalHari = 3;
+    const kolomTotal = kolomAwalHari + jumlahHari;      // TOT
+    const kolomAkhir = kolomTotal + 6;                  // %Hadir
+    const kolomKode = ['TOT', 'TL', 'H', 'S', 'I', 'A'];
+
+    const WARNA = {
+      tot: { isi: 'FFE7F6EE', teks: 'FF0A5C4B' },
+      tl: { isi: 'FFFDF3D9', teks: 'FF7A4F00' },
+      h: { isi: 'FFEEF2F1', teks: 'FF3A5A63' },
+      s: { isi: 'FFE7F3FB', teks: 'FF1A5680' },
+      i: { isi: 'FFF1ECFA', teks: 'FF5B3D85' },
+      a: { isi: 'FFFCE9E8', teks: 'FFB3261E' },
+      l: { isi: 'FFF5F6F5', teks: 'FF8A9491' }
+    };
+
+    const garis = (warna = 'FFBFC9C6') => ({
+      top: { style: 'thin', color: { argb: warna } },
+      left: { style: 'thin', color: { argb: warna } },
+      bottom: { style: 'thin', color: { argb: warna } },
+      right: { style: 'thin', color: { argb: warna } }
+    });
+
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'Absensi Guru SMP ABBS';
+    wb.created = new Date();
+
+    const ws = wb.addWorksheet('Rekap ' + judulBulan, {
+      views: [{ state: 'frozen', xSplit: 2, ySplit: 3 }],
+      pageSetup: {
+        orientation: 'landscape',
+        fitToPage: true,
+        fitToWidth: 1,
+        fitToHeight: 0,
+        paperSize: 9,
+        margins: { left: 0.3, right: 0.3, top: 0.5, bottom: 0.4, header: 0.2, footer: 0.2 }
+      }
+    });
+
+    ws.columns = [
+      { width: 5 },
+      { width: 30 },
+      ...Array.from({ length: jumlahHari }, () => ({ width: 6.5 })),
+      ...Array.from({ length: 6 }, () => ({ width: 6.5 })),
+      { width: 9 }
+    ];
+
+    // ── judul ───────────────────────────────────────────────────────────────
+    ws.mergeCells(1, 1, 1, kolomAkhir);
+    const selJudul = ws.getCell(1, 1);
+    selJudul.value = 'REKAP ABSENSI GURU — SMP ABBS SURAKARTA';
+    selJudul.font = { bold: true, size: 15, color: { argb: 'FF0A3B31' } };
+    selJudul.alignment = { vertical: 'middle' };
+    ws.getRow(1).height = 26;
+
+    ws.mergeCells(2, 1, 2, kolomAkhir);
+    const selSub = ws.getCell(2, 1);
+    selSub.value = `Bulan: ${judulBulan}   ·   Dicetak: ${new Date().toLocaleString('id-ID')}   ·   TOT = tepat waktu (≤ 06:50), Hadir = 06:51–07:00, Terlambat = setelah 07:00`;
+    selSub.font = { italic: true, size: 9, color: { argb: 'FF5D6F6A' } };
+    selSub.alignment = { vertical: 'middle' };
+    ws.getRow(2).height = 18;
+
+    // ── baris header ────────────────────────────────────────────────────────
+    const barisHeader = 3;
+    const header = ['No', 'Guru'];
+    for (let d = 1; d <= jumlahHari; d++) {
+      const tgl = `${rekap.bulan}-${String(d).padStart(2, '0')}`;
+      header.push(`${d}\n${HURUF_HARI[isoDow(tgl) - 1]}`);
+    }
+    header.push(...kolomKode, '% Hadir');
+
+    header.forEach((isi, i) => {
+      const sel = ws.getCell(barisHeader, i + 1);
+      sel.value = isi;
+      sel.font = { bold: true, size: 9, color: { argb: 'FFFFFFFF' } };
+      sel.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0E7A63' } };
+      sel.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+      sel.border = garis('FF0A5C4B');
+    });
+    ws.getRow(barisHeader).height = 30;
+
+    // ── data guru ───────────────────────────────────────────────────────────
+    rekap.guru.forEach((g, i) => {
+      const baris = barisHeader + 1 + i;
+
+      const selNo = ws.getCell(baris, 1);
+      selNo.value = i + 1;
+      selNo.font = { size: 9, color: { argb: 'FF5D6F6A' } };
+      selNo.alignment = { horizontal: 'center', vertical: 'middle' };
+      selNo.border = garis();
+
+      const selNama = ws.getCell(baris, 2);
+      selNama.value = g.nama || '-';
+      selNama.font = { size: 10 };
+      selNama.alignment = { vertical: 'middle', shrinkToFit: false };
+      selNama.border = garis();
+
+      for (let d = 1; d <= jumlahHari; d++) {
+        const tgl = `${rekap.bulan}-${String(d).padStart(2, '0')}`;
+        const sel = ws.getCell(baris, kolomAwalHari + d - 1);
+        const info = selTampil(g.id, tgl);
+        const isi = info.teks || '';
+        const kode = kodeSel(g.id, tgl).k;
+
+        sel.value = isi;
+        sel.font = { size: 9, bold: kode === 'TOT' || kode === 'TL' };
+        sel.alignment = { horizontal: 'center', vertical: 'middle' };
+        sel.border = garis();
+
+        const warna =
+          kode === 'TOT' ? WARNA.tot :
+          kode === 'TL' ? WARNA.tl :
+          kode === 'H' ? WARNA.h :
+          kode === 'S' ? WARNA.s :
+          kode === 'I' ? WARNA.i :
+          kode === 'A' ? WARNA.a :
+          kode === 'L' ? WARNA.l : null;
+
+        if (warna) {
+          sel.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: warna.isi } };
+          sel.font = { ...sel.font, color: { argb: warna.teks } };
+        }
+      }
+
+      const t = hitungTotal(g.id, jumlahHari);
+      const nilaiTotal = [t.tot, t.tl, t.h, t.s, t.i, t.a, t.persen + '%'];
+      nilaiTotal.forEach((nilai, j) => {
+        const sel = ws.getCell(baris, kolomTotal + j);
+        sel.value = nilai;
+        sel.font = { size: 9, bold: true };
+        sel.alignment = { horizontal: 'center', vertical: 'middle' };
+        sel.border = garis();
+      });
+
+      if (t.persen >= 80) {
+        ws.getCell(baris, kolomAkhir).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE7F6EE' } };
+      } else if (t.persen < 60) {
+        ws.getCell(baris, kolomAkhir).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFCE9E8' } };
+      }
+
+      ws.getRow(baris).height = 18;
+    });
+
+    // ── baris jumlah ────────────────────────────────────────────────────────
+    const barisJumlah = barisHeader + rekap.guru.length + 1;
+    ws.mergeCells(barisJumlah, 1, barisJumlah, 2);
+
+    const selJumlah = ws.getCell(barisJumlah, 1);
+    selJumlah.value = 'JUMLAH';
+    selJumlah.font = { bold: true, size: 10 };
+    selJumlah.alignment = { horizontal: 'center', vertical: 'middle' };
+
+    for (let k = 1; k <= kolomAkhir; k++) {
+      const sel = ws.getCell(barisJumlah, k);
+      sel.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF4F1' } };
+      sel.border = garis('FF9FB3AD');
+    }
+
+    const totalKeseluruhan = rekap.guru.reduce(
+      (akumulasi, g) => {
+        const t = hitungTotal(g.id, jumlahHari);
+        return {
+          tot: akumulasi.tot + t.tot, tl: akumulasi.tl + t.tl, h: akumulasi.h + t.h,
+          s: akumulasi.s + t.s, i: akumulasi.i + t.i, a: akumulasi.a + t.a
+        };
+      },
+      { tot: 0, tl: 0, h: 0, s: 0, i: 0, a: 0 }
+    );
+
+    [totalKeseluruhan.tot, totalKeseluruhan.tl, totalKeseluruhan.h,
+     totalKeseluruhan.s, totalKeseluruhan.i, totalKeseluruhan.a].forEach((nilai, j) => {
+      const sel = ws.getCell(barisJumlah, kolomTotal + j);
+      sel.value = nilai;
+      sel.font = { bold: true, size: 9 };
+      sel.alignment = { horizontal: 'center', vertical: 'middle' };
+    });
+
+    ws.getRow(barisJumlah).height = 20;
+
+    // ── catatan kecil ───────────────────────────────────────────────────────
+    const barisCatatan = barisJumlah + 2;
+    ws.mergeCells(barisCatatan, 1, barisCatatan, Math.min(10, kolomAkhir));
+    const selCatatan = ws.getCell(barisCatatan, 1);
+    selCatatan.value =
+      'TOT = tepat waktu (≤ batas), H = hadir dicatat admin, S = sakit, I = izin, A = alpa, L = libur. ' +
+      'Sel berisi jam absen. Data diambil dari aplikasi Absensi Guru SMP ABBS.';
+    selCatatan.font = { italic: true, size: 8.5, color: { argb: 'FF5D6F6A' } };
+    selCatatan.alignment = { wrapText: true, vertical: 'top' };
+    ws.getRow(barisCatatan).height = 24;
+
+    // ── simpan ──────────────────────────────────────────────────────────────
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    });
+    const tautan = document.createElement('a');
+    tautan.href = URL.createObjectURL(blob);
+    tautan.download = `rekap-absensi-${rekap.bulan}.xlsx`;
+    tautan.click();
+    URL.revokeObjectURL(tautan.href);
+
+    toast('File Excel diunduh.');
+  } catch (err) {
+    toast(err.message || 'Gagal membuat file Excel.');
+  } finally {
+    tombol.disabled = false;
+    tombol.textContent = teksAsli;
+  }
 }
 
 // ── self-check logika rekap ─────────────────────────────────────────────────
@@ -1042,7 +1249,8 @@ function ujiLogika() {
     rekap.libur = new Set();
     rekap.peta = new Map([
       ['u1|2026-11-20', { status: 'hadir', tepat_waktu: true }],
-      ['u2|2026-11-18', { status: 'hadir', tepat_waktu: false }],
+      ['u2|2026-11-18', { status: 'hadir', tepat_waktu: false, terlambat: true }],
+      ['u4|2026-11-17', { status: 'hadir', tepat_waktu: false, terlambat: false }],
       ['u3|2026-11-19', { status: 'izin' }]
     ]);
 
@@ -1050,6 +1258,7 @@ function ujiLogika() {
     cek('1 Nov 2026 = Minggu (7)', isoDow('2026-11-01'), 7);
     cek('sel TOT', kodeSel('u1', '2026-11-20'), { k: 'TOT', c: 'k-tot' });
     cek('sel TL', kodeSel('u2', '2026-11-18'), { k: 'TL', c: 'k-tl' });
+    cek('sel hadir biasa', kodeSel('u4', '2026-11-17'), { k: 'H', c: 'k-h' });
     cek('sel izin', kodeSel('u3', '2026-11-19'), { k: 'I', c: 'k-i' });
     cek('sel alpa (hari kerja lewat)', kodeSel('uX', '2026-11-02'), { k: 'A', c: 'k-a' });
     cek('sel minggu = libur', kodeSel('uX', '2026-11-08'), { k: 'L', c: 'k-l' });

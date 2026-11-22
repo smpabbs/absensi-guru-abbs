@@ -103,7 +103,7 @@ Rekap → tombol **Pengaturan**: titik sekolah (tombol "Gunakan lokasi saya"),
 Sel tabel berisi **jam absen** (hijau = tepat waktu, abu = hadir, kuning = terlambat); `H` hadir
 dicatat admin, `S` sakit, `I` izin, `A` alpa, `L` libur. Kolom total TOT/TL/H/S/I/A dan
 %Hadir menempel di kanan. Klik sel → foto absen, jam, jarak, akurasi, dan ubah status +
-catatan. Ada **Export CSV** dan **Cetak** A4 landscape.
+catatan. Ada **Export Excel** (.xlsx berformat: header berwarna, garis tabel, pembekuan kolom nama, siap dicetak landscape) dan **Cetak** A4 landscape.
 
 ## Riwayat per periode (halaman guru)
 
