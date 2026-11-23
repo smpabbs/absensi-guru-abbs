@@ -725,3 +725,14 @@ select option { background: #0a1311; color: var(--ink); }
   .rb-rinci { gap: 8px; }
   .rb-catatan { display: none; }
 }
+
+/* header tanggal: angka + bulan singkat */
+table.rekap thead th i {
+  display: block;
+  font-style: normal;
+  font-size: 8.5px;
+  font-weight: 500;
+  letter-spacing: .02em;
+  opacity: .75;
+}
+table.rekap thead th { height: 40px; line-height: 1.15; }

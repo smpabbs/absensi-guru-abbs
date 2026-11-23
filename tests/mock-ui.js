@@ -1,6 +1,5 @@
-// Pratinjau rekap admin tanpa database: memalsukan sesi + respons Edge Function.
+// Pratinjau rekap admin (mock Edge Function) dengan periode gaji 21 -> 20.
 // Jalankan lewat Playwright MCP: browser_run_code_unsafe({ filename: 'tests/mock-ui.js' })
-// (server lokal: python -m http.server 8080)
 
 async (page) => {
   const REF = 'drlsnhnqxkcgcuskswwx';
@@ -9,8 +8,14 @@ async (page) => {
 
   const pengaturan = {
     id: true, sekolah_id: SEK, lat: -7.539134, lon: 110.805751,
-    radius_m: 50, batas_tot: '06:50:00', hari_kerja: [1, 2, 3, 4, 5, 6]
+    radius_m: 50, batas_tot: '06:50:00', batas_masuk: '07:00:00', hari_kerja: [1, 2, 3, 4, 5, 6]
   };
+
+  const periode = { mulai: '2026-10-21', selesai: '2026-11-20', label: '21 Okt 2026 - 20 Nov 2026' };
+  const tanggal = [];
+  for (let d = new Date('2026-10-21T00:00:00Z'); d <= new Date('2026-11-20T00:00:00Z'); d.setUTCDate(d.getUTCDate() + 1)) {
+    tanggal.push(d.toISOString().slice(0, 10));
+  }
 
   const namaGuru = ['Adila Rahmah, M.Pd', 'Afriyan Moneter Pratama', 'Ahmad Bayu Abdullah, M.Pd',
     'Amien Nur Wicaksono, S.Ag', 'Anni Wijayanti, S.Pd', 'Arif Hidayat, M.Pd',
@@ -21,21 +26,25 @@ async (page) => {
 
   const rows = [];
   guru.forEach((g, gi) => {
-    for (let d = 1; d <= 19; d++) {
-      const tgl = `2026-11-${String(d).padStart(2, '0')}`;
+    tanggal.forEach((tgl, idx) => {
       const dow = ((new Date(tgl + 'T00:00:00').getDay() + 6) % 7) + 1;
-      if (dow === 7 || (d + gi) % 11 === 0) continue;
-      if ((d + gi) % 7 === 0) {
-        rows.push({ user_id: g.id, tanggal: tgl, jam: '00:00', status: d % 2 ? 'izin' : 'sakit',
-          tepat_waktu: false, jarak_m: null, akurasi_m: null, foto_path: null,
-          catatan: d % 2 ? 'acara keluarga' : 'surat dokter', dicatat_oleh: UID });
-        continue;
+      if (dow === 7 || (idx + gi) % 11 === 0) return;
+      if ((idx + gi) % 7 === 0) {
+        rows.push({ user_id: g.id, tanggal: tgl, jam: '00:00', status: idx % 2 ? 'izin' : 'sakit',
+          tepat_waktu: false, terlambat: false, jarak_m: null, akurasi_m: null, foto_path: null,
+          catatan: idx % 2 ? 'acara keluarga' : 'surat dokter', dicatat_oleh: UID });
+        return;
       }
-      const telat = (d + gi) % 5 === 0;
-      rows.push({ user_id: g.id, tanggal: tgl, jam: telat ? '07:12' : '06:39', status: 'hadir',
-        tepat_waktu: !telat, terlambat: telat, jarak_m: 18 + (d * gi) % 40, akurasi_m: 8 + d % 12,
-        foto_path: null, catatan: null, dicatat_oleh: null });
-    }
+      const telat = (idx + gi) % 5 === 0;
+      const normal = !telat && (idx + gi) % 4 === 0;
+      rows.push({
+        user_id: g.id, tanggal: tgl,
+        jam: telat ? '07:12' : normal ? '06:55' : '06:39',
+        status: 'hadir', tepat_waktu: !telat && !normal, terlambat: telat,
+        jarak_m: 18 + (idx * gi) % 40, akurasi_m: 8 + idx % 12,
+        foto_path: null, catatan: null, dicatat_oleh: null
+      });
+    });
   });
 
   const sesi = {
@@ -52,26 +61,29 @@ async (page) => {
       jawab = {
         profil: { id: UID, nama: 'Admin SMP ABBS Surakarta', username: 'admin.abbs', role: 'admin' },
         guruSekolah: false, adminSekolah: true, pengaturan,
-        tanggal: '2026-11-19', jam: '07:10:00', hariIni: null
+        tanggal: '2026-11-20', jam: '07:10:00', hariIni: null, periode: null
       };
+    } else if (isi.action === 'rekap') {
+      if (isi.mulai && isi.mulai !== periode.mulai) {
+        jawab = { guru, rows: [], libur: [], pengaturan, periode: { mulai: isi.mulai, selesai: '2026-12-20', label: '21 Nov 2026 - 20 Des 2026' } };
+        return await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(jawab) });
+      }
+      jawab = { guru, rows, libur: [{ tanggal: '2026-10-25', keterangan: 'Libur contoh' }], pengaturan, periode };
     } else if (isi.action === 'arsip_final') {
       jawab = { ok: true, periode: { label: '21 Okt 2026 - 20 Nov 2026' }, terarsip: 2, dihapus: 2 };
-    } else if (isi.action === 'bersihkan_foto') {
-      jawab = { ok: true, dihapus: 0, batas: '2026-09-22', simpan_foto_hari: 60 };
-    } else if (isi.action === 'rekap') {
-      jawab = { guru, rows: rows.filter(r => r.tanggal.startsWith(isi.bulan || '2026-11')),
-        libur: [{ tanggal: (isi.bulan || '2026-11') + '-05', keterangan: 'Libur contoh' }], pengaturan };
     }
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(jawab) });
   });
 
   await page.goto('http://localhost:8080/');
-  await page.waitForFunction(() => document.querySelectorAll('#tabel-rekap tbody tr').length > 0, { timeout: 15000 });
+  await page.waitForFunction(() => document.querySelectorAll('#tabel-rekap tbody tr').length > 0, { timeout: 20000 });
 
   return await page.evaluate(() => ({
     baris: document.querySelectorAll('#tabel-rekap tbody tr').length,
     kartu: document.querySelectorAll('.hp-kartu').length,
     label: document.getElementById('rekap-bulan-label').textContent,
+    pilihan: document.getElementById('rekap-bulan').options[0].textContent,
+    kolom: document.querySelectorAll('#tabel-rekap thead th').length,
     ringkas: document.getElementById('rekap-ringkas').innerText.replace(/\n/g, ' | ')
   }));
 }

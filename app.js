@@ -63,16 +63,46 @@ function geserBulan(tgl, delta) {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-21`;
 }
 
-// isi dropdown bulan rekap (18 bulan terakhir, terbaru di atas)
-function isiPilihanBulan() {
+const BULAN_PENDEK = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+
+// Periode gaji berjalan: 21 bulan lalu s.d. 20 bulan ini (jika tgl >= 21, periode dimulai bulan ini).
+function periodeMulaiSekarang() {
+  const [y, m, d] = tanggalWIB().split('-').map(Number);
+  let ay = y, am = m;
+  if (d < 21) {
+    const dt = new Date(Date.UTC(y, m - 2, 1));
+    ay = dt.getUTCFullYear();
+    am = dt.getUTCMonth() + 1;
+  }
+  return `${ay}-${String(am).padStart(2, '0')}-21`;
+}
+
+function periodeDariMulaiJs(mulai) {
+  const [y, m] = mulai.split('-').map(Number);
+  const akhir = new Date(Date.UTC(y, m, 1));
+  const selesai = `${akhir.getUTCFullYear()}-${String(akhir.getUTCMonth() + 1).padStart(2, '0')}-20`;
+  const label = `21 ${BULAN_PENDEK[m - 1]} ${y} – 20 ${BULAN_PENDEK[akhir.getUTCMonth()]} ${akhir.getUTCFullYear()}`;
+  return { mulai, selesai, label };
+}
+
+function tanggalAntara(mulai, selesai) {
+  const hasil = [];
+  for (let d = new Date(mulai + 'T00:00:00Z'); d <= new Date(selesai + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + 1)) {
+    hasil.push(d.toISOString().slice(0, 10));
+  }
+  return hasil;
+}
+
+// isi dropdown periode (18 periode terakhir, terbaru di atas)
+function isiPilihanPeriode() {
   const sel = $('rekap-bulan');
   if (sel.options.length) return;
-  const [ty, tm] = bulanIniWIB().split('-').map(Number);
+  let mulai = periodeMulaiSekarang();
   let html = '';
   for (let i = 0; i < 18; i++) {
-    const d = new Date(ty, tm - 1 - i, 1);
-    const nilai = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    html += `<option value="${nilai}">${bulanPanjang(nilai)}</option>`;
+    const p = periodeDariMulaiJs(mulai);
+    html += `<option value="${mulai}">${p.label}</option>`;
+    mulai = geserBulan(mulai, -1);
   }
   sel.innerHTML = html;
 }
@@ -111,16 +141,16 @@ function tampilkan(view) {
 // ── mode demo: pratinjau rekap tanpa database (index.html?demo=1) ───────────
 function mulaiDemo() {
   profil = { id: 'demo', nama: 'Admin SMP ABBS (demo)', role: 'admin', sekolah_id: 'demo', status: 'aktif' };
-  pengaturan = { id: true, lat: -7.539134, lon: 110.805751, radius_m: 50, batas_tot: '06:50:00', hari_kerja: [1, 2, 3, 4, 5, 6] };
+  pengaturan = { id: true, lat: -7.539134, lon: 110.805751, radius_m: 50, batas_tot: '06:50:00', batas_masuk: '07:00:00', hari_kerja: [1, 2, 3, 4, 5, 6] };
 
   $('siapa').textContent = 'Mode demo';
   $('demo-banner').hidden = false;
 
-  const bulan = bulanIniWIB();
-  rekap.bulan = bulan;
   rekap.hariIni = tanggalWIB();
+  rekap.periode = periodeDariMulaiJs(periodeMulaiSekarang());
+  rekap.tanggal = tanggalAntara(rekap.periode.mulai, rekap.periode.selesai);
   rekap.hariKerja = new Set(pengaturan.hari_kerja);
-  rekap.libur = new Set([`${bulan}-05`]);
+  rekap.libur = new Set([rekap.tanggal[4]]);
   rekap.guru = ['Adila Rahmah, M.Pd', 'Afriyan Moneter Pratama', 'Ahmad Bayu Abdullah, M.Pd',
     'Amien Nur Wicaksono, S.Ag', 'Anni Wijayanti, S.Pd', 'Arif Hidayat, M.Pd',
     'Asnia Novitasari AM, M.E', 'Binti Qoeroti, S.Pd., M.Si',
@@ -130,36 +160,37 @@ function mulaiDemo() {
 
   const peta = new Map();
   rekap.guru.forEach((g, gi) => {
-    for (let d = 1; d <= 31; d++) {
-      const tgl = `${bulan}-${String(d).padStart(2, '0')}`;
-      if (tgl > rekap.hariIni) break;
-      if (!rekap.hariKerja.has(isoDow(tgl)) || rekap.libur.has(tgl)) continue;
-      if ((d + gi) % 11 === 0) continue;                      // dibiarkan alpa
-      if ((d + gi) % 7 === 0) {
+    rekap.tanggal.forEach((tgl, idx) => {
+      if (tgl > rekap.hariIni) return;
+      if (!rekap.hariKerja.has(isoDow(tgl)) || rekap.libur.has(tgl)) return;
+      if ((idx + gi) % 11 === 0) return;                      // dibiarkan alpa
+      if ((idx + gi) % 7 === 0) {
         peta.set(g.id + '|' + tgl, {
-          status: d % 2 ? 'izin' : 'sakit', jam: '00:00:00', tepat_waktu: false,
+          status: idx % 2 ? 'izin' : 'sakit', jam: '00:00:00', tepat_waktu: false, terlambat: false,
           jarak_m: null, akurasi_m: null, foto_path: null,
-          catatan: d % 2 ? 'acara keluarga' : 'surat dokter', dicatat_oleh: 'demo'
+          catatan: idx % 2 ? 'acara keluarga' : 'surat dokter', dicatat_oleh: 'demo'
         });
-        continue;
+        return;
       }
-      const telat = (d + gi) % 5 === 0;
+      const telat = (idx + gi) % 5 === 0;
+      const normal = !telat && (idx + gi) % 4 === 0;
       peta.set(g.id + '|' + tgl, {
-        status: 'hadir', jam: telat ? '07:12:00' : `06:${String(30 + (d * 3) % 20).padStart(2, '0')}:00`,
-        tepat_waktu: !telat, jarak_m: 18 + (d * gi) % 40, akurasi_m: 8 + d % 12,
+        status: 'hadir',
+        jam: telat ? '07:12:00' : normal ? '06:55:00' : `06:${String(30 + (idx * 3) % 20).padStart(2, '0')}:00`,
+        tepat_waktu: !telat && !normal, terlambat: telat,
+        jarak_m: 18 + (idx * gi) % 40, akurasi_m: 8 + idx % 12,
         foto_path: null, catatan: null, dicatat_oleh: null
       });
-    }
+    });
   });
   rekap.peta = peta;
 
-  $('rekap-bulan').value = bulan;
-  isiPilihanBulan();
-  $('rekap-bulan').value = bulan;
-  $('rekap-bulan-label').textContent = bulanPanjang(bulan) + ' · Mode demo';
+  isiPilihanPeriode();
+  $('rekap-bulan').value = rekap.periode.mulai;
+  $('rekap-bulan-label').textContent = rekap.periode.label + ' · Mode demo';
   isiFormPengaturan();
   gambarUlangTabel();
-  gambarLibur([{ tanggal: `${bulan}-05`, keterangan: 'Libur contoh' }]);
+  gambarLibur([{ tanggal: rekap.tanggal[4], keterangan: 'Libur contoh' }]);
   tampilkan('rekap');
 }
 
@@ -323,7 +354,7 @@ async function sesudahLogin() {
   $('siapa').textContent = profil.nama || profil.username || '';
 
   if (boot.adminSekolah) {
-    isiPilihanBulan();
+    isiPilihanPeriode();
     tampilkan('rekap');
     await muatRekap();
   } else if (boot.guruSekolah) {
@@ -619,19 +650,22 @@ function statusHari(h) {
 async function muatRekap() {
   if (modeDemo) return;
   if (!profil || profil.role !== 'admin') return;
-  const bulan = $('rekap-bulan').value || bulanIniWIB();
-  $('rekap-bulan').value = bulan;
-  $('rekap-bulan-label').textContent = bulanPanjang(bulan) + ' · ' + (profil.nama || '');
-  rekap.bulan = bulan;
+
+  const mulai = $('rekap-bulan').value || periodeMulaiSekarang();
+  $('rekap-bulan').value = mulai;
   rekap.hariIni = tanggalWIB();
 
   let data;
   try {
-    data = await api('rekap', { bulan });
+    data = await api('rekap', { mulai });
   } catch (err) {
     toast(err.message);
     return;
   }
+
+  rekap.periode = data.periode || periodeDariMulaiJs(mulai);
+  rekap.tanggal = tanggalAntara(rekap.periode.mulai, rekap.periode.selesai);
+  $('rekap-bulan-label').textContent = rekap.periode.label + ' · ' + (profil.nama || '');
 
   pengaturan = data.pengaturan || pengaturan;
   rekap.hariKerja = new Set(pengaturan?.hari_kerja || [1, 2, 3, 4, 5, 6]);
@@ -679,12 +713,10 @@ function selTampil(uid, tgl) {
   return { teks: k, kelas: c, judul: `${hari}: ${labelStatus(rec)}` };
 }
 
-function hitungTotal(uid, jumlahHari) {
+function hitungTotal(uid) {
   const t = { tot: 0, tl: 0, h: 0, s: 0, i: 0, a: 0, efektif: 0 };
-  for (let d = 1; d <= jumlahHari; d++) {
-    const tgl = `${rekap.bulan}-${String(d).padStart(2, '0')}`;
-    const dow = isoDow(tgl);
-    const kerja = rekap.hariKerja.has(dow) && !rekap.libur.has(tgl);
+  for (const tgl of rekap.tanggal) {
+    const kerja = rekap.hariKerja.has(isoDow(tgl)) && !rekap.libur.has(tgl);
     if (kerja && tgl <= rekap.hariIni) t.efektif++;
     const k = kodeSel(uid, tgl).k;
     if (k === 'TOT') t.tot++;
@@ -700,41 +732,37 @@ function hitungTotal(uid, jumlahHari) {
 }
 
 function gambarUlangTabel() {
-  const [tahun, bln] = rekap.bulan.split('-').map(Number);
-  const jumlahHari = new Date(tahun, bln, 0).getDate();
   const cari = $('rekap-cari').value.trim().toLowerCase();
-
   const thead = document.querySelector('#tabel-rekap thead');
   const tbody = document.querySelector('#tabel-rekap tbody');
 
   let h = '<tr><th class="nama">Guru</th>';
-  for (let d = 1; d <= jumlahHari; d++) {
-    const tgl = `${rekap.bulan}-${String(d).padStart(2, '0')}`;
-    h += `<th title="${HARI[isoDow(tgl) - 1]}">${d}</th>`;
+  for (const tgl of rekap.tanggal) {
+    const bulan = BULAN_PENDEK[Number(tgl.slice(5, 7)) - 1];
+    h += `<th title="${HARI[isoDow(tgl) - 1]}, ${Number(tgl.slice(8))} ${bulan}">${Number(tgl.slice(8))}<i>${bulan}</i></th>`;
   }
   h += '<th class="total">TOT</th><th class="total">TL</th><th class="total">H</th><th class="total">S</th>'
      + '<th class="total">I</th><th class="total">A</th><th class="total">%</th></tr>';
   thead.innerHTML = h;
 
   let rows = '', ringkas = { guru: 0, hadir: 0, tot: 0, tl: 0 };
-  const hariIniBulanIni = rekap.hariIni.startsWith(rekap.bulan) ? rekap.hariIni : null;
+  const hariIniPeriode = rekap.tanggal.includes(rekap.hariIni) ? rekap.hariIni : null;
 
   for (const g of rekap.guru) {
     if (cari && !(g.nama || '').toLowerCase().includes(cari)) continue;
     ringkas.guru++;
 
     let tr = `<tr><td class="nama" title="${g.nama || ''}">${g.nama || '-'}</td>`;
-    for (let d = 1; d <= jumlahHari; d++) {
-      const tgl = `${rekap.bulan}-${String(d).padStart(2, '0')}`;
+    for (const tgl of rekap.tanggal) {
       const sel = selTampil(g.id, tgl);
       tr += `<td class="sel ${sel.kelas}" data-uid="${g.id}" data-tgl="${tgl}" title="${sel.judul}">${sel.teks}</td>`;
     }
-    const t = hitungTotal(g.id, jumlahHari);
+    const t = hitungTotal(g.id);
     tr += `<td class="total">${t.tot}</td><td class="total">${t.tl}</td><td class="total">${t.h}</td><td class="total">${t.s}</td>`
         + `<td class="total">${t.i}</td><td class="total">${t.a}</td><td class="total">${t.persen}%</td></tr>`;
     rows += tr;
 
-    const rec = hariIniBulanIni ? rekap.peta.get(g.id + '|' + hariIniBulanIni) : null;
+    const rec = hariIniPeriode ? rekap.peta.get(g.id + '|' + hariIniPeriode) : null;
     if (rec) { ringkas.hadir++; if (rec.status === 'hadir' && rec.tepat_waktu) ringkas.tot++; if (rec.status === 'hadir' && !rec.tepat_waktu) ringkas.tl++; }
   }
 
@@ -749,33 +777,32 @@ function gambarUlangTabel() {
     <div class="chip">Absen hari ini <b>${ringkas.hadir}</b></div>
     <div class="chip">TOT hari ini <b>${ringkas.tot}</b></div>
     <div class="chip">Terlambat hari ini <b>${ringkas.tl}</b></div>
-    <div class="chip">Total TOT bulan ini <b>${rekap.guru.reduce((n, g) => n + hitungTotal(g.id, jumlahHari).tot, 0)}</b></div>`;
+    <div class="chip">Total TOT periode ini <b>${rekap.guru.reduce((n, g) => n + hitungTotal(g.id).tot, 0)}</b></div>`;
 
-  gambarKartuHp(jumlahHari, cari);
+  gambarKartuHp(cari);
 }
 
 // Versi HP: satu kartu per guru berisi kalender mini (tabel terlalu lebar di layar kecil)
-function gambarKartuHp(jumlahHari, cari) {
+function gambarKartuHp(cari) {
   const box = $('rekap-hp');
   if (!box) return;
   if (!window.matchMedia('(max-width: 760px)').matches) { box.innerHTML = ''; return; }
 
   let html = '';
-  const offset = isoDow(`${rekap.bulan}-01`) - 1;
+  const offset = isoDow(rekap.tanggal[0]) - 1;
 
   for (const g of rekap.guru) {
     if (cari && !(g.nama || '').toLowerCase().includes(cari)) continue;
 
-    const t = hitungTotal(g.id, jumlahHari);
+    const t = hitungTotal(g.id);
     const kelas = t.persen >= 80 ? 'ok' : t.persen >= 50 ? 'peringatan' : 'bahaya';
 
     let kal = '<span class="hp-hari kosong"></span>'.repeat(offset);
-    for (let d = 1; d <= jumlahHari; d++) {
-      const tgl = `${rekap.bulan}-${String(d).padStart(2, '0')}`;
+    for (const tgl of rekap.tanggal) {
       const sel = selTampil(g.id, tgl);
       const jam = sel.kelas === 'k-tot' || sel.kelas === 'k-tl' ? sel.teks : '';
       kal += `<button class="hp-hari ${sel.kelas}" data-uid="${g.id}" data-tgl="${tgl}" title="${sel.judul}">
-        <span class="hp-tgl">${d}</span>${jam ? `<span class="hp-jam">${jam}</span>` : ''}
+        <span class="hp-tgl">${Number(tgl.slice(8))}</span>${jam ? `<span class="hp-jam">${jam}</span>` : ''}
       </button>`;
     }
 
@@ -1022,12 +1049,12 @@ async function unduhExcel() {
   try {
     const ExcelJS = await muatExcelJS();
 
-    const [tahun, bln] = rekap.bulan.split('-').map(Number);
-    const jumlahHari = new Date(tahun, bln, 0).getDate();
-    const judulBulan = bulanPanjang(rekap.bulan);
+    const tanggal = rekap.tanggal;
+    const jumlahHari = tanggal.length;
+    const periodeLabel = rekap.periode?.label || '';
     const kolomAwalHari = 3;
-    const kolomTotal = kolomAwalHari + jumlahHari;      // TOT
-    const kolomAkhir = kolomTotal + 6;                  // %Hadir
+    const kolomTotal = kolomAwalHari + jumlahHari;
+    const kolomAkhir = kolomTotal + 6;
     const kolomKode = ['TOT', 'TL', 'H', 'S', 'I', 'A'];
 
     const WARNA = {
@@ -1051,7 +1078,8 @@ async function unduhExcel() {
     wb.creator = 'Absensi Guru SMP ABBS';
     wb.created = new Date();
 
-    const ws = wb.addWorksheet('Rekap ' + judulBulan, {
+    const namaSheet = ('Rekap ' + periodeLabel.replace(/\s[–-]\s/, '-')).slice(0, 31);
+    const ws = wb.addWorksheet(namaSheet, {
       views: [{ state: 'frozen', xSplit: 2, ySplit: 3 }],
       pageSetup: {
         orientation: 'landscape',
@@ -1071,7 +1099,6 @@ async function unduhExcel() {
       { width: 9 }
     ];
 
-    // ── judul ───────────────────────────────────────────────────────────────
     ws.mergeCells(1, 1, 1, kolomAkhir);
     const selJudul = ws.getCell(1, 1);
     selJudul.value = 'REKAP ABSENSI GURU — SMP ABBS SURAKARTA';
@@ -1081,17 +1108,16 @@ async function unduhExcel() {
 
     ws.mergeCells(2, 1, 2, kolomAkhir);
     const selSub = ws.getCell(2, 1);
-    selSub.value = `Bulan: ${judulBulan}   ·   Dicetak: ${new Date().toLocaleString('id-ID')}   ·   TOT = tepat waktu (≤ 06:50), Hadir = 06:51–07:00, Terlambat = setelah 07:00`;
+    selSub.value = `Periode: ${periodeLabel}   ·   Dicetak: ${new Date().toLocaleString('id-ID')}   ·   TOT = tepat waktu (≤ 06:50), Hadir = 06:51–07:00, Terlambat = setelah 07:00`;
     selSub.font = { italic: true, size: 9, color: { argb: 'FF5D6F6A' } };
     selSub.alignment = { vertical: 'middle' };
     ws.getRow(2).height = 18;
 
-    // ── baris header ────────────────────────────────────────────────────────
     const barisHeader = 3;
     const header = ['No', 'Guru'];
-    for (let d = 1; d <= jumlahHari; d++) {
-      const tgl = `${rekap.bulan}-${String(d).padStart(2, '0')}`;
-      header.push(`${d}\n${HURUF_HARI[isoDow(tgl) - 1]}`);
+    for (const tgl of tanggal) {
+      const bulan = BULAN_PENDEK[Number(tgl.slice(5, 7)) - 1];
+      header.push(`${Number(tgl.slice(8))}\n${bulan}`);
     }
     header.push(...kolomKode, '% Hadir');
 
@@ -1105,7 +1131,6 @@ async function unduhExcel() {
     });
     ws.getRow(barisHeader).height = 30;
 
-    // ── data guru ───────────────────────────────────────────────────────────
     rekap.guru.forEach((g, i) => {
       const baris = barisHeader + 1 + i;
 
@@ -1118,17 +1143,15 @@ async function unduhExcel() {
       const selNama = ws.getCell(baris, 2);
       selNama.value = g.nama || '-';
       selNama.font = { size: 10 };
-      selNama.alignment = { vertical: 'middle', shrinkToFit: false };
+      selNama.alignment = { vertical: 'middle' };
       selNama.border = garis();
 
-      for (let d = 1; d <= jumlahHari; d++) {
-        const tgl = `${rekap.bulan}-${String(d).padStart(2, '0')}`;
-        const sel = ws.getCell(baris, kolomAwalHari + d - 1);
+      tanggal.forEach((tgl, idx) => {
+        const sel = ws.getCell(baris, kolomAwalHari + idx);
         const info = selTampil(g.id, tgl);
-        const isi = info.teks || '';
         const kode = kodeSel(g.id, tgl).k;
 
-        sel.value = isi;
+        sel.value = info.teks || '';
         sel.font = { size: 9, bold: kode === 'TOT' || kode === 'TL' };
         sel.alignment = { horizontal: 'center', vertical: 'middle' };
         sel.border = garis();
@@ -1146,9 +1169,9 @@ async function unduhExcel() {
           sel.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: warna.isi } };
           sel.font = { ...sel.font, color: { argb: warna.teks } };
         }
-      }
+      });
 
-      const t = hitungTotal(g.id, jumlahHari);
+      const t = hitungTotal(g.id);
       const nilaiTotal = [t.tot, t.tl, t.h, t.s, t.i, t.a, t.persen + '%'];
       nilaiTotal.forEach((nilai, j) => {
         const sel = ws.getCell(baris, kolomTotal + j);
@@ -1167,10 +1190,8 @@ async function unduhExcel() {
       ws.getRow(baris).height = 18;
     });
 
-    // ── baris jumlah ────────────────────────────────────────────────────────
     const barisJumlah = barisHeader + rekap.guru.length + 1;
     ws.mergeCells(barisJumlah, 1, barisJumlah, 2);
-
     const selJumlah = ws.getCell(barisJumlah, 1);
     selJumlah.value = 'JUMLAH';
     selJumlah.font = { bold: true, size: 10 };
@@ -1184,7 +1205,7 @@ async function unduhExcel() {
 
     const totalKeseluruhan = rekap.guru.reduce(
       (akumulasi, g) => {
-        const t = hitungTotal(g.id, jumlahHari);
+        const t = hitungTotal(g.id);
         return {
           tot: akumulasi.tot + t.tot, tl: akumulasi.tl + t.tl, h: akumulasi.h + t.h,
           s: akumulasi.s + t.s, i: akumulasi.i + t.i, a: akumulasi.a + t.a
@@ -1203,25 +1224,24 @@ async function unduhExcel() {
 
     ws.getRow(barisJumlah).height = 20;
 
-    // ── catatan kecil ───────────────────────────────────────────────────────
     const barisCatatan = barisJumlah + 2;
     ws.mergeCells(barisCatatan, 1, barisCatatan, Math.min(10, kolomAkhir));
     const selCatatan = ws.getCell(barisCatatan, 1);
     selCatatan.value =
+      'Periode gaji: tanggal 21 bulan sebelumnya sampai tanggal 20 bulan ini. ' +
       'TOT = tepat waktu (≤ batas), H = hadir dicatat admin, S = sakit, I = izin, A = alpa, L = libur. ' +
       'Sel berisi jam absen. Data diambil dari aplikasi Absensi Guru SMP ABBS.';
     selCatatan.font = { italic: true, size: 8.5, color: { argb: 'FF5D6F6A' } };
     selCatatan.alignment = { wrapText: true, vertical: 'top' };
     ws.getRow(barisCatatan).height = 24;
 
-    // ── simpan ──────────────────────────────────────────────────────────────
     const buffer = await wb.xlsx.writeBuffer();
     const blob = new Blob([buffer], {
       type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     });
     const tautan = document.createElement('a');
     tautan.href = URL.createObjectURL(blob);
-    tautan.download = `rekap-absensi-${rekap.bulan}.xlsx`;
+    tautan.download = `rekap-absensi-${rekap.periode?.mulai || 'periode'}.xlsx`;
     tautan.click();
     URL.revokeObjectURL(tautan.href);
 
@@ -1243,7 +1263,8 @@ function ujiLogika() {
     hasil.push({ nama, lulus: JSON.stringify(dapat) === JSON.stringify(harus), dapat, harus });
 
   try {
-    rekap.bulan = '2026-11';
+    rekap.periode = periodeDariMulaiJs('2026-10-21');
+    rekap.tanggal = tanggalAntara(rekap.periode.mulai, rekap.periode.selesai);
     rekap.hariIni = '2026-11-20';
     rekap.hariKerja = new Set([1, 2, 3, 4, 5, 6]);
     rekap.libur = new Set();
@@ -1254,6 +1275,9 @@ function ujiLogika() {
       ['u3|2026-11-19', { status: 'izin' }]
     ]);
 
+    cek('periode 21 Okt - 20 Nov = 31 hari', rekap.tanggal.length, 31);
+    cek('tanggal pertama', rekap.tanggal[0], '2026-10-21');
+    cek('tanggal terakhir', rekap.tanggal[30], '2026-11-20');
     cek('20 Nov 2026 = Jumat (5)', isoDow('2026-11-20'), 5);
     cek('1 Nov 2026 = Minggu (7)', isoDow('2026-11-01'), 7);
     cek('sel TOT', kodeSel('u1', '2026-11-20'), { k: 'TOT', c: 'k-tot' });
@@ -1264,24 +1288,24 @@ function ujiLogika() {
     cek('sel minggu = libur', kodeSel('uX', '2026-11-08'), { k: 'L', c: 'k-l' });
     cek('sel hari ini belum absen = kosong', kodeSel('uX', '2026-11-20'), { k: '', c: 'k-kosong' });
 
-    const t1 = hitungTotal('u1', 30);
-    cek('total TOT', [t1.tot, t1.tl, t1.a, t1.efektif, t1.persen], [1, 0, 16, 17, 6]);
-    const tX = hitungTotal('uX', 30);
+    const t1 = hitungTotal('u1');
+    cek('total TOT', [t1.tot, t1.tl, t1.a, t1.efektif, t1.persen], [1, 0, 26, 27, 4]);
+    const tX = hitungTotal('uX');
     // hari ini (20 Nov) belum dihitung Alpa, tapi masuk penyebut %kehadiran
-    cek('tanpa absen = semua alpa', [tX.a, tX.efektif, tX.persen], [16, 17, 0]);
+    cek('tanpa absen = semua alpa', [tX.a, tX.efektif, tX.persen], [26, 27, 0]);
 
     rekap.peta.set('u4|2026-11-17', { status: 'hadir', tepat_waktu: false, dicatat_oleh: 'admin' });
     cek('hadir manual = kode H', kodeSel('u4', '2026-11-17').k, 'H');
-    const t4 = hitungTotal('u4', 30);
-    cek('hadir manual tidak masuk TOT', [t4.h, t4.tot, t4.persen], [1, 0, 6]);
+    const t4 = hitungTotal('u4');
+    cek('hadir manual tidak masuk TOT', [t4.h, t4.tot, t4.persen], [1, 0, 4]);
 
     rekap.libur = new Set(['2026-11-20']);
     cek('libur menimpa status', kodeSel('u1', '2026-11-20').k, 'L');
-    cek('libur mengurangi hari efektif', hitungTotal('uX', 30).efektif, 16);
+    cek('libur mengurangi hari efektif', hitungTotal('uX').efektif, 26);
 
     rekap.libur = new Set();
     rekap.hariKerja = new Set([1, 2, 3, 4, 5]);
-    cek('tanpa Sabtu', hitungTotal('uX', 30).efektif, 15);
+    cek('tanpa Sabtu', hitungTotal('uX').efektif, 23);
   } finally {
     Object.assign(rekap, asli);
   }

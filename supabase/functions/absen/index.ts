@@ -539,13 +539,14 @@ Deno.serve(async (req) => {
       // ── rekap bulanan (admin) ─────────────────────────────────────────────
       case "rekap": {
         if (!adminSekolah) return galat("Hanya admin sekolah.", 403, "AKSES");
-        const bulan = String(body.bulan ?? "").slice(0, 7);
-        if (!/^\d{4}-\d{2}$/.test(bulan)) return galat("Bulan tidak valid.", 200, "DATA");
 
-        const [th, bl] = bulan.split("-").map(Number);
-        const jumlahHari = new Date(Date.UTC(th, bl, 0)).getUTCDate();
-        const awal = `${bulan}-01`;
-        const akhir = `${bulan}-${String(jumlahHari).padStart(2, "0")}`;
+        // Periode gaji: tanggal 21 -> tanggal 20 bulan berikutnya.
+        const minta = String(body.mulai ?? "");
+        const periode = /^\d{4}-\d{2}-21$/.test(minta)
+          ? periodeDariMulai(minta)
+          : periodeGaji(tanggal);
+        const awal = periode.mulai;
+        const akhir = periode.selesai;
 
         const guru = await daftarGuru(token, pengaturan.sekolah_id);
         const { data: rows, error } = await admin.from("absen_presensi")
@@ -568,7 +569,7 @@ Deno.serve(async (req) => {
         const { data: libur } = await admin.from("absen_libur")
           .select("tanggal,keterangan").gte("tanggal", awal).lte("tanggal", akhir);
 
-        return jawab({ guru, rows: rows ?? [], libur: libur ?? [], pengaturan });
+        return jawab({ guru, rows: rows ?? [], libur: libur ?? [], pengaturan, periode });
       }
 
       // ── koreksi status (admin) ────────────────────────────────────────────

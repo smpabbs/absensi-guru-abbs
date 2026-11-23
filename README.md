@@ -74,7 +74,7 @@ LMS lebih dulu. Kata sandi tidak pernah disalin dan tidak bisa dibaca (hash bcry
 
 Daftar guru diambil langsung dari LMS: hanya **role guru, sekolah SMP ABBS, status aktif**
 (40 orang). Guru nonaktif tidak bisa login dan tidak muncul di rekap, kecuali masih punya
-catatan pada bulan yang sedang dilihat (riwayat lama tetap tampil).
+catatan pada periode yang sedang dilihat (riwayat lama tetap tampil).
 
 Username diubah dulu jadi email akun LMS lewat RPC LMS `get_email_by_username`
 (atau pola `username@examfilq.dev`). Hanya guru/admin SMP ABBS yang boleh masuk.
@@ -100,7 +100,9 @@ Rekap → tombol **Pengaturan**: titik sekolah (tombol "Gunakan lokasi saya"),
 
 ## Rekap
 
-Sel tabel berisi **jam absen** (hijau = tepat waktu, abu = hadir, kuning = terlambat); `H` hadir
+Rekap admin memakai **periode gaji 21 s.d. 20** (bukan bulan kalender): pilih periode di dropdown,
+kepala kolom menampilkan tanggal + bulan (mis. `21 Okt`, `1 Nov`). Sel tabel berisi **jam absen**
+(hijau = tepat waktu, abu = hadir, kuning = terlambat); `H` hadir
 dicatat admin, `S` sakit, `I` izin, `A` alpa, `L` libur. Kolom total TOT/TL/H/S/I/A dan
 %Hadir menempel di kanan. Klik sel → foto absen, jam, jarak, akurasi, dan ubah status +
 catatan. Ada **Export Excel** (.xlsx berformat: header berwarna, garis tabel, pembekuan kolom nama, siap dicetak landscape) dan **Cetak** A4 landscape.
