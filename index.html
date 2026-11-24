@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fira+Sans:wght@300;400;500;600;700&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=13">
+<link rel="stylesheet" href="styles.css?v=14">
 </head>
 <body>
 
@@ -63,6 +63,16 @@
         <video id="video" autoplay playsinline muted hidden></video>
         <canvas id="canvas"></canvas>
         <div class="kosong" id="kamera-kosong">Menyiapkan kamera…</div>
+        <div class="kamera-luar" id="kamera-luar" hidden>
+          <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0Z"></path>
+            <circle cx="12" cy="10" r="3"></circle>
+          </svg>
+          <b>Kamera belum aktif</b>
+          <span id="kamera-luar-jarak">Menunggu lokasi…</span>
+          <small>Kamera hanya bisa dipakai di dalam radius sekolah. Aktif otomatis begitu Anda masuk.</small>
+        </div>
         <span class="sudut s1"></span><span class="sudut s2"></span>
         <span class="sudut s3"></span><span class="sudut s4"></span>
       </div>
@@ -318,6 +328,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="config.js"></script>
-<script src="app.js?v=13"></script>
+<script src="app.js?v=14"></script>
 </body>
 </html>

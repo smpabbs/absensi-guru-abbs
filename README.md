@@ -82,8 +82,9 @@ Username diubah dulu jadi email akun LMS lewat RPC LMS `get_email_by_username`
 ## Aturan yang berlaku
 
 - Absen **1× per hari**, dijaga `unique (user_id, tanggal)` di database.
-- Foto wajib; kamera depan diminta otomatis saat halaman dibuka (tanpa tombol nyalakan).
-  Kalau izin belum diberikan, muat ulang halaman untuk memunculkan permintaan izin lagi.
+- Foto wajib; **kamera baru menyala setelah lokasi masuk radius** (di luar radius panel kamera
+  terkunci dan tombol Kirim Absen disembunyikan). Keluar radius >10 m membuat kamera mati otomatis.
+  Izin kamera baru diminta saat pertama kali masuk radius; kalau ditolak, muat ulang halaman.
 - Tombol **Perbaiki lokasi** mengambil ulang GPS bila titik terasa salah (mis. baru keluar gedung),
   tombol **Kirim Absen** mengirim foto + koordinat sekaligus.
 - Jarak, jam, dan status dihitung **di server** (Edge Function), bukan di browser.

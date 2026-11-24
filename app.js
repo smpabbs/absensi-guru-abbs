@@ -13,6 +13,9 @@ let profil = null;
 let pengaturan = null;
 let posisi = null;
 let stream = null;
+let dalamRadius = false;
+let memintaKamera = false;
+let izinKameraGagal = false;
 let pengamatLokasi = null;
 let absenHariIni = null;
 let modeDemo = new URLSearchParams(location.search).get('demo') === '1';
@@ -394,8 +397,10 @@ function tampilkanAbsen(boot) {
   if (boot.hariIni?.jam) {
     tampilkanHasil(boot.hariIni);
   } else {
+    // kamera baru dinyalakan saat lokasi sudah masuk radius (lihat renderLokasi)
+    $('kamera-luar').hidden = false;
+    $('kamera-status').textContent = 'Menunggu lokasi…';
     mulaiLokasi();
-    siapkanKamera();
   }
 }
 
@@ -463,19 +468,38 @@ function renderLokasi() {
   const jarak = haversine(posisi.lat, posisi.lon, pengaturan.lat, pengaturan.lon);
   const radius = pengaturan.radius_m;
   const dalam = jarak <= radius;
+  const keluar = jarak > radius + 10;   // toleransi 10 m supaya tidak kedip saat GPS bergeser
+  dalamRadius = dalam;
 
   $('info-jarak').textContent = Math.round(jarak) + ' m';
   $('info-akurasi').textContent = '±' + Math.round(posisi.akurasi) + ' m';
 
   const pesan = $('info-pesan');
+  const status = $('kamera-status');
+  const luar = $('kamera-luar');
+
+  luar.hidden = dalam;
+  $('kamera-luar-jarak').textContent = dalam
+    ? `${Math.round(jarak)} m dari titik sekolah`
+    : `${Math.round(jarak)} m dari titik sekolah — maksimal ${radius} m`;
+
   if (dalam) {
-    pesan.textContent = 'Di dalam radius absen. Ambil foto lalu tekan Absen.';
+    pesan.textContent = 'Di dalam radius absen. Ambil foto lalu tekan Kirim Absen.';
     pesan.className = 'pesan info';
+    if (!stream && !memintaKamera && !izinKameraGagal) siapkanKamera();
+    if (stream) {
+      status.textContent = 'Kamera siap. Wajah Anda terlihat?';
+      $('tombol-absen').hidden = false;
+      $('tombol-absen').disabled = false;
+    }
   } else {
-    pesan.textContent = `Anda ${Math.round(jarak)} m dari titik sekolah, maksimal ${radius} m.`;
+    pesan.textContent = `Anda ${Math.round(jarak)} m dari titik sekolah, maksimal ${radius} m. Foto hanya bisa diambil di dalam radius.`;
     pesan.className = 'pesan salah';
+    status.textContent = 'Menunggu Anda masuk radius sekolah…';
+    if (keluar && stream) hentikanKamera();
+    $('tombol-absen').hidden = true;
+    $('tombol-absen').disabled = true;
   }
-  $('tombol-absen').disabled = !dalam || !posisi;
 }
 
 async function siapkanKamera() {
@@ -483,9 +507,12 @@ async function siapkanKamera() {
   const status = $('kamera-status');
   if (!navigator.mediaDevices?.getUserMedia) {
     status.textContent = 'Perangkat ini tidak mendukung kamera.';
+    izinKameraGagal = true;
     return;
   }
+  if (memintaKamera || stream) return;
 
+  memintaKamera = true;
   kotak.hidden = false;
   kotak.textContent = 'Menunggu izin kamera…';
   status.textContent = 'Menunggu izin kamera…';
@@ -495,22 +522,27 @@ async function siapkanKamera() {
       video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 960 } },
       audio: false
     });
+
+    // kalau ternyata sudah keluar radius saat izin diberikan, langsung matikan
+    if (!dalamRadius) { hentikanKamera(); return; }
+
     const v = $('video');
     v.srcObject = stream;
     v.hidden = false;
     kotak.hidden = true;
     status.textContent = 'Kamera siap. Wajah Anda terlihat?';
     $('tombol-absen').hidden = false;
-    $('tombol-absen').disabled = !posisi || !pengaturan ||
-      haversine(posisi.lat, posisi.lon, pengaturan.lat, pengaturan.lon) > pengaturan.radius_m;
+    $('tombol-absen').disabled = false;
   } catch (err) {
-    // izin ditolak / kamera dipakai aplikasi lain
+    izinKameraGagal = true;
     stream = null;
     matikanVideo();
     kotak.hidden = false;
     kotak.innerHTML = 'Izin kamera belum aktif.<br>Muat ulang halaman untuk meminta izin lagi.';
     status.textContent = 'Kamera tidak aktif.';
     $('tombol-absen').hidden = true;
+  } finally {
+    memintaKamera = false;
   }
 }
 
@@ -551,6 +583,8 @@ function perbaruiLokasi() {
 
 async function kirimAbsen() {
   if (!posisi) return toast('Lokasi belum terbaca.');
+  if (!dalamRadius) return toast('Anda di luar radius sekolah. Foto hanya bisa diambil di dalam radius.');
+  if (!stream) return toast('Kamera belum aktif. Tunggu sampai kamera siap.');
   const tombol = $('tombol-absen');
   tombol.disabled = true;
   tombol.textContent = 'Mengirim…';
