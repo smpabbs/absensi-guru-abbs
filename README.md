@@ -48,6 +48,11 @@ izin: kamera, lokasi, internet (diminta saat aplikasi pertama dibuka).
 
 - **Unduh:** <https://github.com/smpabbs/absensi-guru-abbs/releases/download/apk-latest/app-debug.apk>
 - **Pasang:** buka file APK di HP → izinkan "instal dari sumber tidak dikenal" → Install.
+- **Update:** pasang APK baru **di atas** aplikasi lama, tidak perlu uninstall. APK ditandatangani
+  kunci tetap (`kunci/absensi-guru.p12`, tidak di-commit; tersimpan sebagai secret repo
+  `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`).
+  **Simpan salinan `kunci/` di tempat aman** — kalau hilang, semua APK berikutnya wajib uninstall dulu.
+  (Sekali ini, APK versi lama bertanda tangan kunci debug acak, jadi masih perlu uninstall satu kali.)
 - Isi aplikasi = file situs di folder `www/` (dibundel), jadi setiap ada perubahan web APK
   dibangun ulang otomatis, tetapi guru perlu **memasang ulang** APK untuk mendapat versi baru.
 - Membangun ulang manual: Actions → "Build APK Android" → Run workflow.

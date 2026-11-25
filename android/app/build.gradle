@@ -21,6 +21,22 @@ android {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
+        debug {
+            // Kunci tetap (CI): supaya APK baru bisa dipasang sebagai update, tanpa uninstall.
+            if (System.getenv("KEYSTORE_FILE")) {
+                signingConfig signingConfigs.rilis
+            }
+        }
+    }
+    signingConfigs {
+        if (System.getenv("KEYSTORE_FILE")) {
+            rilis {
+                storeFile file(System.getenv("KEYSTORE_FILE"))
+                storePassword System.getenv("KEYSTORE_PASSWORD")
+                keyAlias System.getenv("KEY_ALIAS")
+                keyPassword System.getenv("KEY_PASSWORD")
+            }
+        }
     }
 }
 

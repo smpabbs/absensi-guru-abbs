@@ -18,5 +18,7 @@ android/build/
 android/capacitor-cordova-android-plugins/
 
 dist/
+# kunci tanda tangan APK (JANGAN di-commit; salinan di GitHub Secrets)
+kunci/
 # folder build (dihasilkan scripts/siapkan-www.mjs; dipakai APK & Cloudflare Pages)
 www/
