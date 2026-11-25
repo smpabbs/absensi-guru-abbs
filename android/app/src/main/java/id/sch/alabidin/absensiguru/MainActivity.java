@@ -1,4 +1,4 @@
-﻿package id.sch.alabidin.absensiguru;
+package id.sch.alabidin.absensiguru;
 
 import android.Manifest;
 import android.os.Build;
