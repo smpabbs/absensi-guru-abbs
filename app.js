@@ -17,6 +17,7 @@ let dalamRadius = false;
 let memintaKamera = false;
 let izinKameraGagal = false;
 let pengamatLokasi = null;
+let sudahAbsen = false;
 let absenHariIni = null;
 let modeDemo = new URLSearchParams(location.search).get('demo') === '1';
 let riwayatPeriode = null;
@@ -298,7 +299,10 @@ async function masuk(e) {
 }
 
 async function keluar() {
+  hentikanLokasi();
   hentikanKamera();
+  sudahAbsen = false;
+  izinKameraGagal = false;
   await db.auth.signOut();
   profil = null;
   pengaturan = null;
@@ -395,8 +399,10 @@ function tampilkanAbsen(boot) {
   $('kartu-sukses').hidden = true;
 
   if (boot.hariIni?.jam) {
+    sudahAbsen = true;
     tampilkanHasil(boot.hariIni);
   } else {
+    sudahAbsen = false;
     // kamera baru dinyalakan saat lokasi sudah masuk radius (lihat renderLokasi)
     $('kamera-luar').hidden = false;
     $('kamera-status').textContent = 'Menunggu lokasi…';
@@ -431,6 +437,8 @@ function labelStatus(rec) {
 }
 
 function tampilkanHasil(rec, baruDikirim = false) {
+  sudahAbsen = true;
+  hentikanLokasi();
   hentikanKamera();
   $('kartu-kamera').hidden = true;
   $('kartu-status').hidden = true;
@@ -445,6 +453,7 @@ function tampilkanHasil(rec, baruDikirim = false) {
 }
 
 function mulaiLokasi() {
+  if (sudahAbsen) return;
   if (!navigator.geolocation) {
     $('info-pesan').textContent = 'Perangkat ini tidak mendukung GPS.';
     return;
@@ -465,6 +474,7 @@ function mulaiLokasi() {
 
 function renderLokasi() {
   if (!posisi || !pengaturan) return;
+  if (sudahAbsen) return;   // sudah absen: kamera & lokasi tidak dipakai lagi
   const jarak = haversine(posisi.lat, posisi.lon, pengaturan.lat, pengaturan.lon);
   const radius = pengaturan.radius_m;
   const dalam = jarak <= radius;
@@ -503,6 +513,7 @@ function renderLokasi() {
 }
 
 async function siapkanKamera() {
+  if (sudahAbsen) return;
   const kotak = $('kamera-kosong');
   const status = $('kamera-status');
   if (!navigator.mediaDevices?.getUserMedia) {
@@ -1394,4 +1405,12 @@ async function arsipkanPeriodeLalu() {
     $('set-arsip-info').textContent = '';
     toast(err.message);
   }
+}
+
+// Hentikan pemantauan GPS (dipakai setelah absen / keluar).
+function hentikanLokasi() {
+  if (pengamatLokasi != null && navigator.geolocation) {
+    navigator.geolocation.clearWatch(pengamatLokasi);
+  }
+  pengamatLokasi = null;
 }
