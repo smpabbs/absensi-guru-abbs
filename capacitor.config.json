@@ -1,0 +1,8 @@
+﻿{
+  "appId": "id.sch.alabidin.absensiguru",
+  "appName": "Absensi Guru ABBS",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false
+  }
+}

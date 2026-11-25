@@ -1,0 +1,73 @@
+name: Build APK Android
+
+# Membangun APK debug dari aplikasi web (dibungkus Capacitor) dan
+# menerbitkannya sebagai aset rilis GitHub dengan tag "apk-latest".
+# Unduhan langsung:
+#   https://github.com/smpabbs/absensi-guru-abbs/releases/download/apk-latest/app-debug.apk
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "android/**"
+      - "package.json"
+      - "package-lock.json"
+      - "capacitor.config.json"
+      - "scripts/siapkan-www.mjs"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Pasang Android SDK platform
+        run: |
+          sdkmanager --install "platforms;android-35" "build-tools;35.0.0" "platform-tools" > /dev/null
+          yes | sdkmanager --licenses > /dev/null || true
+
+      - name: Pasang dependensi
+        run: npm ci
+
+      - name: Salin file situs ke www + sync Capacitor
+        run: |
+          npm run www
+          npx cap sync android
+
+      - name: Build APK (debug)
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Unggah artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: absensi-guru-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Terbitkan ke rilis GitHub
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-latest
+          name: APK Absensi Guru ABBS
+          body: |
+            APK terbaru aplikasi Absensi Guru SMP ABBS.
+            Dibangun otomatis dari commit ${{ github.sha }}.
+          files: android/app/build/outputs/apk/debug/app-debug.apk
+          prerelease: true
+          fail_on_unmatched_files: true

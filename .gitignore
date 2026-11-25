@@ -8,3 +8,11 @@ absen-belum.png
 
 supabase/.temp
 .uji-sesi.json
+
+# --- Capacitor / Android ---
+node_modules/
+android/.gradle/
+android/local.properties
+android/app/build/
+android/build/
+android/capacitor-cordova-android-plugins/
