@@ -5,6 +5,7 @@
   "description": "Absensi Guru SMP ABBS Surakarta (web + APK)",
   "scripts": {
     "www": "node scripts/siapkan-www.mjs",
+    "deploy:pages": "npm run www && npx --yes wrangler@latest pages deploy www --project-name absenguruabbs --branch main",
     "apk:sync": "npm run www && npx cap sync android",
     "apk:build": "npm run apk:sync && cd android && gradlew.bat assembleDebug"
   },

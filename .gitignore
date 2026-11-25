@@ -18,3 +18,5 @@ android/build/
 android/capacitor-cordova-android-plugins/
 
 dist/
+# folder build (dihasilkan scripts/siapkan-www.mjs; dipakai APK & Cloudflare Pages)
+www/
