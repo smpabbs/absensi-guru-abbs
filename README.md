@@ -40,6 +40,18 @@ LMS lebih dulu. Kata sandi tidak pernah disalin dan tidak bisa dibaca (hash bcry
 | `tests/` | pratinjau UI dengan data palsu & uji sesi nyata |
 | `BLUEPRINT.md` | latar belakang, data sekolah, keputusan desain |
 
+## APK Android
+
+APK dibangun otomatis oleh GitHub Actions (`.github/workflows/build-apk.yml`) memakai Capacitor,
+lalu diterbitkan sebagai rilis GitHub. Ukuran ±3,9 MB, paket `id.sch.alabidin.absensiguru`,
+izin: kamera, lokasi, internet (diminta saat aplikasi pertama dibuka).
+
+- **Unduh:** <https://github.com/smpabbs/absensi-guru-abbs/releases/download/apk-latest/app-debug.apk>
+- **Pasang:** buka file APK di HP → izinkan "instal dari sumber tidak dikenal" → Install.
+- Isi aplikasi = file situs di folder `www/` (dibundel), jadi setiap ada perubahan web APK
+  dibangun ulang otomatis, tetapi guru perlu **memasang ulang** APK untuk mendapat versi baru.
+- Membangun ulang manual: Actions → "Build APK Android" → Run workflow.
+
 ## Hosting
 
 - **Netlify (utama):** <https://absenguruabbs.netlify.app> - deploy otomatis dari GitHub Actions
