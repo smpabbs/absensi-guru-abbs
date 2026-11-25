@@ -402,9 +402,11 @@ Deno.serve(async (req) => {
         }
 
         const { data: sudah } = await admin.from("absen_presensi")
-          .select("jam,tepat_waktu,terlambat,jarak_m,foto_path")
+          .select("id,jam,tepat_waktu,terlambat,jarak_m,foto_path,kebijakan")
           .eq("user_id", profil.id).eq("tanggal", tanggal).maybeSingle();
-        if (sudah) {
+        // Baris "kebijakan" (diisi otomatis) boleh diganti absen nyata.
+        const barisKebijakan = Boolean(sudah?.kebijakan);
+        if (sudah && !barisKebijakan) {
           return jawab({
             ok: false, code: "SUDAH",
             jam: potongJam(sudah.jam), tepat_waktu: sudah.tepat_waktu, terlambat: sudah.terlambat,
@@ -449,10 +451,28 @@ Deno.serve(async (req) => {
           foto_path: fotoPath
         };
 
-        const { error } = await admin.from("absen_presensi").insert(baris);
-        if (error) {
-          if (String(error.code) === "23505") return galat("Anda sudah absen hari ini.", 200, "SUDAH");
-          return galat("Gagal menyimpan absen: " + error.message, 500);
+        if (barisKebijakan && sudah) {
+          const { error } = await admin.from("absen_presensi")
+            .update({
+              jam: baris.jam,
+              tepat_waktu: baris.tepat_waktu,
+              terlambat: baris.terlambat,
+              kebijakan: true,
+              lat: baris.lat,
+              lon: baris.lon,
+              akurasi_m: baris.akurasi_m,
+              jarak_m: baris.jarak_m,
+              foto_path: baris.foto_path,
+              catatan: "Absen menyusul (kebijakan manajemen unit)"
+            })
+            .eq("id", sudah.id);
+          if (error) return galat("Gagal menyimpan absen: " + error.message, 500);
+        } else {
+          const { error } = await admin.from("absen_presensi").insert(baris);
+          if (error) {
+            if (String(error.code) === "23505") return galat("Anda sudah absen hari ini.", 200, "SUDAH");
+            return galat("Gagal menyimpan absen: " + error.message, 500);
+          }
         }
 
         return jawab({
@@ -749,7 +769,8 @@ Deno.serve(async (req) => {
 
         const kemarin = new Date(tanggal + "T00:00:00Z");
         kemarin.setUTCDate(kemarin.getUTCDate() - 1);
-        const batas = kemarin.toISOString().slice(0, 10);
+        // setelah 21:00 WIB hari ini dianggap selesai, jadi ikut diisi
+        const batas = jam >= "21:00:00" ? tanggal : kemarin.toISOString().slice(0, 10);
 
         const baris: Record<string, unknown>[] = [];
         for (const g of target) {
