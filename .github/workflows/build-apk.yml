@@ -16,6 +16,9 @@ on:
       - "capacitor.config.json"
       - "scripts/siapkan-www.mjs"
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
