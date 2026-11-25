@@ -111,6 +111,22 @@ Username diubah dulu jadi email akun LMS lewat RPC LMS `get_email_by_username`
 Rekap → tombol **Pengaturan**: titik sekolah (tombol "Gunakan lokasi saya"),
 **radius** (10–5000 m, default 50 m), **jam masuk**, **batas TOT**, hari kerja, dan hari libur.
 
+## Pengecualian TOT (kebijakan manajemen unit)
+
+Admin bisa menetapkan daftar username yang kehadirannya **selalu dihitung TOT**, sesuai
+kebijakan resmi unit (mis. guru yang memegang tugas manajemen). Diatur di
+**Pengaturan → Pengecualian TOT (kebijakan)**.
+
+Perilakunya:
+
+- Absen masuk jam berapa pun (termasuk setelah 07.00) → dicatat **tepat waktu (TOT)**;
+  jam sebenarnya tetap tersimpan.
+- Hari kerja yang terlewat tanpa absen → otomatis dicatat **hadir (kebijakan)** dengan catatan
+  "Kebijakan manajemen unit (tidak absen)". Pengisian berjalan tiap malam lewat workflow
+  `arsip-harian.yml` (aksi `isi_kebijakan`), dan bisa dipicu manual.
+- Di rekap sel tampil **`TOT*`** (hijau) untuk hari yang diisi kebijakan; legenda menjelaskan artinya.
+  Data tetap dapat diaudit: baris kebijakan punya penanda `kebijakan = true` + catatan.
+
 ## Rekap
 
 Rekap admin memakai **periode gaji 21 s.d. 20** (bukan bulan kalender): pilih periode di dropdown,

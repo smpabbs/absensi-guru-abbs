@@ -80,7 +80,7 @@ async function profilDariToken(token: string) {
 async function daftarGuru(token: string, sekolahId: string) {
   // hanya guru berstatus aktif yang bisa login/absen; guru nonaktif tidak ditampilkan
   const r = await fetch(
-    `${LMS_URL}/rest/v1/profiles?select=id,nama&role=eq.guru&status=eq.aktif&sekolah_id=eq.${sekolahId}&order=nama`,
+    `${LMS_URL}/rest/v1/profiles?select=id,nama,username&role=eq.guru&status=eq.aktif&sekolah_id=eq.${sekolahId}&order=nama`,
     { headers: { apikey: LMS_KEY, Authorization: `Bearer ${token}` } }
   );
   if (!r.ok) return [];
@@ -132,7 +132,7 @@ async function ringkasanPeriode(userId: string, pengaturan: { hari_kerja: number
   const periode = periodeGaji(tanggal);
 
   const { data: rows } = await admin.from("absen_presensi")
-    .select("tanggal,status,tepat_waktu,terlambat")
+    .select("tanggal,status,tepat_waktu,terlambat,kebijakan")
     .eq("user_id", userId)
     .gte("tanggal", periode.mulai).lte("tanggal", periode.selesai);
 
@@ -427,8 +427,12 @@ Deno.serve(async (req) => {
           if (eh) fotoPath = null;
         }
 
-        const tepatWaktu = jam <= pengaturan.batas_tot;
-        const terlambat = jam > pengaturan.batas_masuk;
+        // Kebijakan manajemen unit: username tertentu selalu dihitung TOT.
+        const pengecualian = (pengaturan.pengecualian_tot ?? []) as string[];
+        const kenaKebijakan = pengecualian.includes(String(profil.username ?? ""));
+
+        const tepatWaktu = kenaKebijakan ? true : jam <= pengaturan.batas_tot;
+        const terlambat = kenaKebijakan ? false : jam > pengaturan.batas_masuk;
         const baris = {
           user_id: profil.id,
           sekolah_id: pengaturan.sekolah_id,
@@ -438,6 +442,7 @@ Deno.serve(async (req) => {
           status: "hadir",
           tepat_waktu: tepatWaktu,
           terlambat,
+          kebijakan: kenaKebijakan,
           lat, lon,
           akurasi_m: Number.isFinite(akurasi) ? akurasi : null,
           jarak_m: jarak,
@@ -468,7 +473,7 @@ Deno.serve(async (req) => {
           : periodeGaji(tanggal);
 
         const { data: rows, error } = await admin.from("absen_presensi")
-          .select("tanggal,jam,status,tepat_waktu,terlambat,jarak_m,catatan")
+          .select("tanggal,jam,status,tepat_waktu,terlambat,kebijakan,jarak_m,catatan")
           .eq("user_id", profil.id)
           .gte("tanggal", periode.mulai).lte("tanggal", periode.selesai);
         if (error) return galat("Gagal memuat riwayat: " + error.message, 500);
@@ -554,7 +559,7 @@ Deno.serve(async (req) => {
 
         const guru = await daftarGuru(token, pengaturan.sekolah_id);
         const { data: rows, error } = await admin.from("absen_presensi")
-          .select("user_id,nama,tanggal,jam,status,tepat_waktu,terlambat,jarak_m,akurasi_m,foto_path,foto_dihapus,arsip_drive_id,catatan,dicatat_oleh,diubah_at")
+          .select("user_id,nama,tanggal,jam,status,tepat_waktu,terlambat,kebijakan,jarak_m,akurasi_m,foto_path,foto_dihapus,arsip_drive_id,catatan,dicatat_oleh,diubah_at")
           .eq("sekolah_id", pengaturan.sekolah_id)
           .gte("tanggal", awal).lte("tanggal", akhir);
         if (error) return galat("Gagal memuat rekap: " + error.message, 500);
@@ -616,6 +621,13 @@ Deno.serve(async (req) => {
           diubah_at: new Date().toISOString()
         };
 
+        const pengecualian = (pengaturan.pengecualian_tot ?? []) as string[];
+        // username target diambil dari LMS agar konsisten dengan daftar kebijakan
+        const guruLms = await daftarGuru(token, pengaturan.sekolah_id);
+        const akunTarget = (guruLms as { id: string; username?: string }[])
+          .find((g) => g.id === uid)?.username ?? "";
+        const kenaKebijakan = status === "hadir" && pengecualian.includes(akunTarget);
+
         if (!ada) {
           baris.jam = jamInput ? `${jamInput}:00` : "00:00:00";
           baris.tepat_waktu = false;
@@ -628,6 +640,12 @@ Deno.serve(async (req) => {
           baris.tepat_waktu = jamInput <= potongJam(pengaturan.batas_tot);
           baris.terlambat = jamInput > potongJam(pengaturan.batas_masuk);
           if (status !== "hadir") baris.tepat_waktu = false;
+        }
+
+        baris.kebijakan = kenaKebijakan;
+        if (kenaKebijakan) {
+          baris.tepat_waktu = true;
+          baris.terlambat = false;
         }
 
         const { error } = await admin.from("absen_presensi").upsert(baris, { onConflict: "user_id,tanggal" });
@@ -643,6 +661,10 @@ Deno.serve(async (req) => {
         const batas = String(body.batas_tot ?? "");
         const masuk = String(body.batas_masuk ?? "");
         const simpanFoto = Number(body.simpan_foto_hari ?? pengaturan.simpan_foto_hari ?? 60);
+        const pengecualian = Array.isArray(body.pengecualian_tot)
+          ? body.pengecualian_tot.map((u: unknown) => String(u).trim().toLowerCase())
+              .filter((u: string) => /^[a-z0-9._-]{2,60}$/.test(u)).slice(0, 50)
+          : (pengaturan.pengecualian_tot ?? []);
         const hari = Array.isArray(body.hari_kerja) ? body.hari_kerja.map(Number) : [];
 
         if (!Number.isFinite(lat) || !Number.isFinite(lon)) return galat("Koordinat tidak valid.", 200, "DATA");
@@ -656,7 +678,7 @@ Deno.serve(async (req) => {
 
         const { error } = await admin.from("absen_pengaturan").update({
           lat, lon, radius_m: Math.round(radius), batas_tot: batas, batas_masuk: masuk,
-          simpan_foto_hari: Math.round(simpanFoto),
+          simpan_foto_hari: Math.round(simpanFoto), pengecualian_tot: pengecualian,
           hari_kerja: hari, updated_at: new Date().toISOString()
         }).eq("id", true);
         if (error) return galat("Gagal menyimpan pengaturan: " + error.message, 500);
@@ -696,6 +718,69 @@ Deno.serve(async (req) => {
         }
 
         return jawab({ ok: true, dihapus: total, batas: batasTgl, simpan_foto_hari: hari });
+      }
+
+      // ── isi hadir (kebijakan) untuk hari kerja yang terlewat ─────────────
+      case "isi_kebijakan": {
+        if (!cronOk && !adminSekolah) return galat("Hanya admin sekolah.", 403, "AKSES");
+
+        const daftar = (pengaturan.pengecualian_tot ?? []) as string[];
+        if (!daftar.length) return jawab({ ok: true, diisi: 0, pesan: "Daftar pengecualian kosong." });
+
+        const minta = String(body.mulai ?? "");
+        const periode = /^\d{4}-\d{2}-21$/.test(minta)
+          ? periodeDariMulai(minta)
+          : periodeGaji(tanggal);
+
+        const guru = await daftarGuru(token, pengaturan.sekolah_id) as { id: string; nama: string; username?: string }[];
+        const target = guru.filter((g) => daftar.includes(String(g.username ?? "")));
+        if (!target.length) return jawab({ ok: true, diisi: 0, pesan: "Tidak ada akun yang cocok." });
+
+        const { data: libur } = await admin.from("absen_libur")
+          .select("tanggal").gte("tanggal", periode.mulai).lte("tanggal", periode.selesai);
+        const setLibur = new Set((libur ?? []).map((l) => l.tanggal));
+        const kerja = new Set(pengaturan.hari_kerja);
+
+        const { data: ada } = await admin.from("absen_presensi")
+          .select("user_id,tanggal")
+          .in("user_id", target.map((t) => t.id))
+          .gte("tanggal", periode.mulai).lte("tanggal", periode.selesai);
+        const sudah = new Set((ada ?? []).map((r) => `${r.user_id}|${r.tanggal}`));
+
+        const kemarin = new Date(tanggal + "T00:00:00Z");
+        kemarin.setUTCDate(kemarin.getUTCDate() - 1);
+        const batas = kemarin.toISOString().slice(0, 10);
+
+        const baris: Record<string, unknown>[] = [];
+        for (const g of target) {
+          for (let d = new Date(periode.mulai + "T00:00:00Z");
+               d <= new Date(Math.min(new Date(periode.selesai + "T00:00:00Z").getTime(), new Date(batas + "T00:00:00Z").getTime()));
+               d.setUTCDate(d.getUTCDate() + 1)) {
+            const tgl = d.toISOString().slice(0, 10);
+            if (!kerja.has(isoDow(tgl)) || setLibur.has(tgl)) continue;
+            if (sudah.has(`${g.id}|${tgl}`)) continue;
+            baris.push({
+              user_id: g.id,
+              sekolah_id: pengaturan.sekolah_id,
+              nama: g.nama,
+              tanggal: tgl,
+              jam: "00:00:00",
+              status: "hadir",
+              tepat_waktu: true,
+              terlambat: false,
+              kebijakan: true,
+              catatan: "Kebijakan manajemen unit (tidak absen)"
+            });
+          }
+        }
+
+        if (baris.length) {
+          const { error } = await admin.from("absen_presensi")
+            .upsert(baris, { onConflict: "user_id,tanggal", ignoreDuplicates: true });
+          if (error) return galat("Gagal mengisi: " + error.message, 500);
+        }
+
+        return jawab({ ok: true, periode, diisi: baris.length, akun: target.map((t) => t.username) });
       }
 
       // ── hari libur (admin) ────────────────────────────────────────────────

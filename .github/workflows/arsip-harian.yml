@@ -33,3 +33,13 @@ jobs:
             echo "$hasil" | grep -q '"lanjut":true' || break
             sleep 2
           done
+
+      - name: Isi hadir (kebijakan) untuk hari yang terlewat
+        env:
+          CRON_SECRET: ${{ secrets.ABSEN_CRON_SECRET }}
+        run: |
+          curl -sS -X POST \
+            "https://lthyqvxpiykqfaqrumcx.supabase.co/functions/v1/absen" \
+            -H "Content-Type: application/json" \
+            -H "x-cron-secret: $CRON_SECRET" \
+            -d '{"action":"isi_kebijakan"}'

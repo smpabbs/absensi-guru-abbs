@@ -47,6 +47,10 @@ async (page) => {
     });
   });
 
+  // baris kebijakan (tidak absen, dihitung TOT)
+  rows.push({ user_id: 'g0', tanggal: '2026-11-20', jam: '00:00', status: 'hadir', tepat_waktu: true, terlambat: false, kebijakan: true, jarak_m: null, akurasi_m: null, foto_path: null, catatan: 'Kebijakan manajemen unit (tidak absen)', dicatat_oleh: null });
+  rows.push({ user_id: 'g5', tanggal: '2026-11-20', jam: '00:00', status: 'hadir', tepat_waktu: true, terlambat: false, kebijakan: true, jarak_m: null, akurasi_m: null, foto_path: null, catatan: 'Kebijakan manajemen unit (tidak absen)', dicatat_oleh: null });
+
   const sesi = {
     access_token: 'uji', token_type: 'bearer', expires_in: 3600,
     expires_at: Math.floor(Date.now() / 1000) + 3000, refresh_token: 'uji',

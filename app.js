@@ -431,6 +431,7 @@ function labelStatus(rec) {
     return rec.status.charAt(0).toUpperCase() + rec.status.slice(1);
   }
   if (rec.dicatat_oleh) return 'Hadir (dicatat admin)';
+  if (rec.kebijakan) return 'Tepat waktu (kebijakan)';
   if (rec.tepat_waktu) return 'Tepat waktu (TOT)';
   if (rec.terlambat) return 'Terlambat';
   return 'Hadir';
@@ -751,7 +752,14 @@ function selTampil(uid, tgl) {
   // hadir: tampilkan jam absennya, warna mengikuti status
   if (rec && rec.status === 'hadir' && !rec.dicatat_oleh) {
     const jam = potongJam(rec.jam);
-    return { teks: jam || 'H', kelas: c, judul: `${hari}: ${labelStatus(rec)} pukul ${jam}` };
+    if (rec.kebijakan && (!jam || jam === '00:00')) {
+      return { teks: 'TOT*', kelas: c, judul: `${hari}: tepat waktu (kebijakan manajemen unit)` };
+    }
+    return {
+      teks: jam || 'H',
+      kelas: c,
+      judul: `${hari}: ${labelStatus(rec)}${jam ? ' pukul ' + jam : ''}`
+    };
   }
   if (k === 'H') return { teks: 'H', kelas: c, judul: `${hari}: ${labelStatus(rec)}` };
   if (!rec) return { teks: k, kelas: c, judul: `${hari}: ${k === 'A' ? 'alpa (tidak ada absen)' : k}` };
@@ -970,6 +978,7 @@ function isiFormPengaturan() {
   $('set-radius').value = pengaturan.radius_m;
   $('set-tot').value = potongJam(pengaturan.batas_tot);
   $('set-masuk').value = potongJam(pengaturan.batas_masuk || '07:00:00');
+  $('set-pengecualian').value = (pengaturan.pengecualian_tot || []).join(', ');
 
 
   const box = $('set-hari');
@@ -994,6 +1003,8 @@ async function simpanPengaturan() {
     radius_m: Math.round(Number($('set-radius').value)),
     batas_tot: $('set-tot').value,
     batas_masuk: $('set-masuk').value,
+    pengecualian_tot: $('set-pengecualian').value
+      .split(/[,;\n]/).map(s => s.trim().toLowerCase()).filter(Boolean),
 
     hari_kerja: hari
   };
@@ -1274,7 +1285,8 @@ async function unduhExcel() {
     const selCatatan = ws.getCell(barisCatatan, 1);
     selCatatan.value =
       'Periode gaji: tanggal 21 bulan sebelumnya sampai tanggal 20 bulan ini. ' +
-      'TOT = tepat waktu (≤ batas), H = hadir dicatat admin, S = sakit, I = izin, A = alpa, L = libur. ' +
+      'TOT = tepat waktu (≤ batas), TOT* = kebijakan manajemen unit, H = hadir dicatat admin, ' +
+      'S = sakit, I = izin, A = alpa, L = libur. ' +
       'Sel berisi jam absen. Data diambil dari aplikasi Absensi Guru SMP ABBS.';
     selCatatan.font = { italic: true, size: 8.5, color: { argb: 'FF5D6F6A' } };
     selCatatan.alignment = { wrapText: true, vertical: 'top' };
