@@ -271,7 +271,8 @@ async function unduhDrive(id: string) {
 const namaFileDrive = (r: { tanggal: string; nama?: string | null; jam: string }) =>
   `${r.tanggal}_${(r.nama ?? "guru").replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40)}_${String(r.jam).slice(0, 5).replace(":", "")}.jpg`;
 
-async function arsipkanBatch(batas = 60, periode?: { mulai: string; selesai: string }) {
+async function arsipkanBatch(batas = 60, periode?: { mulai: string; selesai: string }, budgetMs = 90000) {
+  const mulai = Date.now();
   let q = admin.from("absen_presensi")
     .select("id,tanggal,jam,user_id,nama,foto_path")
     .not("foto_path", "is", null)
@@ -281,9 +282,12 @@ async function arsipkanBatch(batas = 60, periode?: { mulai: string; selesai: str
   if (periode) q = q.gte("tanggal", periode.mulai).lte("tanggal", periode.selesai);
 
   const { data: rows } = await q;
-  let terarsip = 0, gagal = 0;
+  let terarsip = 0, gagal = 0, berhenti = false;
 
   for (const r of rows ?? []) {
+    // jangan sampai melewati batas waktu Edge Function (±150 detik)
+    if (Date.now() - mulai > budgetMs) { berhenti = true; break; }
+
     try {
       const { data: blob, error } = await admin.storage.from(BUCKET).download(r.foto_path as string);
       if (error || !blob) { gagal++; continue; }
@@ -302,7 +306,7 @@ async function arsipkanBatch(batas = 60, periode?: { mulai: string; selesai: str
     }
   }
 
-  return { terarsip, gagal, dibaca: rows?.length ?? 0 };
+  return { terarsip, gagal, dibaca: rows?.length ?? 0, berhenti };
 }
 
 function periodeTerakhirSelesai(tanggal: string) {
@@ -745,8 +749,11 @@ Deno.serve(async (req) => {
       // ── arsip foto ke Google Drive ────────────────────────────────────────
       case "arsip_harian": {
         if (!cronOk && !adminSekolah) return galat("Hanya admin sekolah.", 403, "AKSES");
-        const hasil = await arsipkanBatch(Math.min(80, Number(body.batas ?? 60)));
-        return jawab({ ok: true, ...hasil });
+        const hasil = await arsipkanBatch(Math.min(40, Number(body.batas ?? 30)), undefined, 85000);
+        const { count } = await admin.from("absen_presensi")
+          .select("id", { count: "exact", head: true })
+          .not("foto_path", "is", null).is("arsip_drive_id", null);
+        return jawab({ ok: true, ...hasil, sisa: count ?? 0, lanjut: (count ?? 0) > 0 && !hasil.berhenti });
       }
 
       case "arsip_final": {
@@ -760,12 +767,12 @@ Deno.serve(async (req) => {
 
         const kering = Boolean(body.kering);
 
-        // pastikan semua foto periode ini sudah tersalin ke Drive
+        // pastikan semua foto periode ini sudah tersalin ke Drive (dibatasi waktu ±95 detik)
         let terarsip = 0;
-        for (let i = 0; i < 12; i++) {
-          const h = await arsipkanBatch(40, periode);
+        for (let i = 0; i < 3; i++) {
+          const h = await arsipkanBatch(30, periode, 90000);
           terarsip += h.terarsip;
-          if (h.dibaca < 40) break;
+          if (h.berhenti || h.dibaca < 30) break;
         }
 
         const { count } = await admin.from("absen_presensi")
@@ -773,7 +780,12 @@ Deno.serve(async (req) => {
           .gte("tanggal", periode.mulai).lte("tanggal", periode.selesai)
           .not("foto_path", "is", null).is("arsip_drive_id", null);
         if ((count ?? 0) > 0) {
-          return galat(`Masih ${count} foto belum terarsip. Coba jalankan lagi nanti.`, 200, "ARSIP");
+          // belum selesai: minta jalan lagi (workflow akan mengulang)
+          return jawab({
+            ok: true, lanjut: true, periode,
+            terarsip, dihapus: 0,
+            pesan: `Masih ${count} foto belum terarsip; jalankan lagi.`
+          });
         }
 
         const { data: rows } = await admin.from("absen_presensi")
