@@ -753,7 +753,7 @@ Deno.serve(async (req) => {
         const { count } = await admin.from("absen_presensi")
           .select("id", { count: "exact", head: true })
           .not("foto_path", "is", null).is("arsip_drive_id", null);
-        return jawab({ ok: true, ...hasil, sisa: count ?? 0, lanjut: (count ?? 0) > 0 && !hasil.berhenti });
+        return jawab({ ok: true, ...hasil, sisa: count ?? 0, lanjut: (count ?? 0) > 0 && hasil.terarsip > 0 });
       }
 
       case "arsip_final": {
