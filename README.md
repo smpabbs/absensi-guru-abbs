@@ -54,9 +54,10 @@ izin: kamera, lokasi, internet (diminta saat aplikasi pertama dibuka).
 
 ## Hosting
 
-- **Cloudflare Pages (utama):** <https://absenguruabbs.pages.dev> - deploy manual:
-  `npm run deploy:pages` (perlu login sekali: `npx wrangler login`). Isi yang diunggah hanya
-  folder `www/` (4 file situs), bukan seluruh repo.
+- **Cloudflare Pages (utama):** <https://absenguruabbs.pages.dev> - deploy otomatis dari GitHub Actions
+  tiap push ke `main` (.github/workflows/deploy-cloudflare.yml, secret CLOUDFLARE_API_TOKEN).
+  Isi yang diunggah hanya folder `www/` (4 file situs), bukan seluruh repo. Deploy manual:
+  `npm run deploy:pages`.
 - **Netlify:** <https://absenguruabbs.netlify.app> - deploy otomatis dari GitHub Actions
   (.github/workflows/deploy-netlify.yml, secret NETLIFY_AUTH_TOKEN + NETLIFY_SITE_ID),
   tetapi **diblokir** karena kredit akun habis (situs masih versi lama).
